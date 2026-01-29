@@ -7,21 +7,21 @@ pub struct StatsPlugin {
 
 impl Default for StatsPlugin {
     fn default() -> Self {
-        Self { open: true }
+        Self { open: false }
     }
 }
 
 impl NotosPlugin for StatsPlugin {
     fn id(&self) -> &str {
-        "stats"
+        "about"
     }
 
     fn name(&self) -> &str {
-        "Statistics"
+        "About"
     }
 
     fn menu_ui(&mut self, ui: &mut egui::Ui) {
-        if ui.button("Statistics").clicked() {
+        if ui.button("About").clicked() {
             self.open = !self.open;
             ui.close_menu();
         }
@@ -29,13 +29,18 @@ impl NotosPlugin for StatsPlugin {
 
     fn ui(&mut self, ctx: &Context) {
         if self.open {
-            Window::new("Statistics")
+            Window::new("About Notos")
                 .open(&mut self.open)
+                .collapsible(false)
+                .resizable(false)
                 .show(ctx, |ui| {
-                    ui.label("This is a plugin window.");
-                    ui.label("It can access the context and show info.");
-                    // In a real plugin, we would access the app state via a shared context
-                    // or message passing. For now, just a demo.
+                    ui.heading("Notos Text Editor");
+                    ui.label(format!("Version: {}\n Yet another text editor to compete with Windows Notepad.", env!("CARGO_PKG_VERSION")));
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        ui.label("GitHub:");
+                        ui.hyperlink("https://github.com/appsjuragan");
+                    });
                 });
         }
     }

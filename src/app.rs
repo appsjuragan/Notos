@@ -13,7 +13,9 @@ pub struct NotosApp {
     find_state: FindDialogState,
     goto_line_state: GotoLineState,
     word_wrap: bool,
+    show_line_numbers: bool,
     dark_mode: bool,
+    editor_font_size: f32,
     // Settings, etc.
 }
 
@@ -66,7 +68,9 @@ impl NotosApp {
             find_state: FindDialogState::default(),
             goto_line_state: GotoLineState::default(),
             word_wrap: true,
+            show_line_numbers: false,
             dark_mode: false,
+            editor_font_size: 14.0,
         };
         
         if let Some(first) = app.tabs.first() {
@@ -474,21 +478,22 @@ impl eframe::App for NotosApp {
                     if ui.checkbox(&mut self.word_wrap, "Word Wrap").clicked() {
                         ui.close_menu();
                     }
+                    if ui.checkbox(&mut self.show_line_numbers, "Show Line Number").clicked() {
+                        ui.close_menu();
+                    }
                     if ui.checkbox(&mut self.dark_mode, "Dark Mode").clicked() {
                          setup_custom_style(ctx, self.dark_mode);
                          ui.close_menu();
                     }
                     ui.separator();
                     if ui.button("Zoom In").clicked() { 
-                        let zoom = ctx.zoom_factor();
-                        ctx.set_zoom_factor(zoom + 0.1);
+                        self.editor_font_size = (self.editor_font_size + 1.0).min(72.0);
                     }
                     if ui.button("Zoom Out").clicked() { 
-                         let zoom = ctx.zoom_factor();
-                        ctx.set_zoom_factor((zoom - 0.1).max(0.2));
+                         self.editor_font_size = (self.editor_font_size - 1.0).max(6.0);
                     }
                     if ui.button("Reset Zoom").clicked() { 
-                        ctx.set_zoom_factor(1.0);
+                        self.editor_font_size = 14.0;
                     }
                 });
                 
@@ -571,7 +576,7 @@ impl eframe::App for NotosApp {
                                 }
                             });
                         }
-                        ui.label("100%");
+                        ui.label(format!("{}%", (self.editor_font_size / 14.0 * 100.0) as i32));
                     });
                 } else {
                      ui.label("Ready");
@@ -585,6 +590,15 @@ impl eframe::App for NotosApp {
 
         // Central Panel: Editor
         egui::CentralPanel::default().show(ctx, |ui| {
+            // Handle Ctrl + Scroll for Zoom
+            if ctx.input(|i| i.modifiers.ctrl) {
+                let scroll_delta = ctx.input(|i| i.raw_scroll_delta.y);
+                if scroll_delta != 0.0 {
+                    let delta = if scroll_delta > 0.0 { 1.0 } else { -1.0 };
+                    self.editor_font_size = (self.editor_font_size + delta).clamp(6.0, 72.0);
+                }
+            }
+
             let mut new_cursor_pos = None;
             let mut content_changed = false;
             let mut previous_content = String::new();
@@ -593,47 +607,151 @@ impl eframe::App for NotosApp {
             if let Some((idx, tab)) = self.tabs.iter_mut().enumerate().find(|(_i, t)| Some(t.id) == self.active_tab_id) {
                 previous_content = tab.content.clone();
 
-                let inner_cursor_pos = egui::ScrollArea::vertical().show(ui, |ui| {
-                    let available_height = ui.available_height();
-                    let available_width = ui.available_width();
-                    let response = ui.add_sized(
-                        [available_width, available_height],
-                        egui::TextEdit::multiline(&mut tab.content)
-                            .id(egui::Id::new("editor"))
-                            .frame(false) // Notepad-like look
-                            .code_editor()
-                            .lock_focus(true)
-                            .desired_width(if self.word_wrap { available_width } else { f32::INFINITY })
+                // Apply font size to the editor scope
+                ui.scope(|ui| {
+                    ui.style_mut().text_styles.insert(
+                        egui::TextStyle::Monospace,
+                        egui::FontId::monospace(self.editor_font_size),
                     );
-                    
-                    if response.changed() {
-                        content_changed = true;
-                        tab.is_dirty = true;
-                        tab_changed_idx = Some(idx);
-                    }
-                    
-                    if let Some(state) = egui::TextEdit::load_state(ui.ctx(), response.id) {
-                        if let Some(range) = state.cursor.char_range() {
-                            let idx = range.primary.index;
-                            let text = &tab.content;
-                            // Calculate line and col
-                            let mut line = 1;
-                            let mut col = 1;
-                            for (i, c) in text.char_indices() {
-                                if i >= idx { break; }
-                                if c == '\n' {
-                                    line += 1;
-                                    col = 1;
-                                } else {
-                                    col += 1;
+                    // Also update Body style as TextEdit might use it for some things, 
+                    // but usually code_editor uses Monospace.
+                    // Let's also update Body just in case, or for line numbers if we want them to scale too.
+                    ui.style_mut().text_styles.insert(
+                        egui::TextStyle::Body,
+                        egui::FontId::monospace(self.editor_font_size),
+                    );
+
+                    egui::ScrollArea::both()
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                        let available_height = ui.available_height();
+                        
+                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
+                            ui.spacing_mut().item_spacing.x = 0.0;
+                            
+                            let font_id = egui::FontId::monospace(self.editor_font_size);
+                            let margin = 2.0;
+
+                            let line_number_width = if self.show_line_numbers {
+                                let line_count = tab.content.lines().count().max(1);
+                                let line_count = if tab.content.ends_with('\n') { line_count + 1 } else { line_count };
+                                let num_digits = line_count.to_string().len().max(2);
+                                (num_digits as f32 * self.editor_font_size * 0.6) + 12.0
+                            } else {
+                                0.0
+                            };
+
+                            if self.show_line_numbers {
+                                // Reserve space for line numbers
+                                ui.add_space(line_number_width + 8.0); 
+                            }
+
+                            let editor_bg = if ui.visuals().dark_mode {
+                                egui::Color32::from_gray(75) // Even lighter grey for text area as requested
+                            } else {
+                                egui::Color32::WHITE
+                            };
+
+                            let mut response = None;
+                            let mut galley_to_draw = None;
+
+                            if self.show_line_numbers {
+                                let galley = ui.fonts(|f| {
+                                    let layout_job = egui::text::LayoutJob::simple(
+                                        tab.content.clone(),
+                                        font_id.clone(),
+                                        ui.visuals().widgets.noninteractive.text_color(),
+                                        if self.word_wrap { ui.available_width() - margin * 2.0 } else { f32::INFINITY },
+                                    );
+                                    f.layout_job(layout_job)
+                                });
+                                galley_to_draw = Some(galley);
+                            }
+
+                            egui::Frame::none()
+                                .fill(editor_bg)
+                                .show(ui, |ui| {
+                                    let res = ui.add_sized(
+                                        [ui.available_width(), available_height],
+                                        egui::TextEdit::multiline(&mut tab.content)
+                                            .id(egui::Id::new("editor"))
+                                            .font(font_id.clone())
+                                            .frame(false)
+                                            .code_editor()
+                                            .lock_focus(true)
+                                            .margin(egui::Margin::same(margin))
+                                            .desired_width(if self.word_wrap { ui.available_width() } else { f32::INFINITY })
+                                    );
+                                    
+                                    if res.changed() {
+                                        content_changed = true;
+                                        tab.is_dirty = true;
+                                        tab_changed_idx = Some(idx);
+                                    }
+                                    
+                                    if let Some(state) = egui::TextEdit::load_state(ui.ctx(), res.id) {
+                                        if let Some(range) = state.cursor.char_range() {
+                                            let idx = range.primary.index;
+                                            let text = &tab.content;
+                                            let mut line = 1;
+                                            let mut col = 1;
+                                            for (i, c) in text.char_indices() {
+                                                if i >= idx { break; }
+                                                if c == '\n' {
+                                                    line += 1;
+                                                    col = 1;
+                                                } else {
+                                                    col += 1;
+                                                }
+                                            }
+                                            new_cursor_pos = Some((line, col));
+                                        }
+                                    }
+                                    response = Some(res);
+                                });
+
+                            if self.show_line_numbers {
+                                if let (Some(res), Some(galley)) = (response, galley_to_draw) {
+                                    let painter = ui.painter();
+                                    let mut logical_line = 1;
+                                    let mut is_start_of_logical_line = true;
+                                    
+                                    // Draw background for line numbers
+                                    let line_num_rect = egui::Rect::from_min_max(
+                                        egui::pos2(res.rect.min.x - line_number_width - 8.0, res.rect.min.y),
+                                        egui::pos2(res.rect.min.x, res.rect.max.y)
+                                    );
+                                    painter.rect_filled(line_num_rect, 0.0, ui.visuals().widgets.noninteractive.bg_fill);
+                                    
+                                    // Draw separator
+                                    painter.line_segment(
+                                        [egui::pos2(res.rect.min.x - 2.0, res.rect.min.y), egui::pos2(res.rect.min.x - 2.0, res.rect.max.y)],
+                                        ui.visuals().widgets.noninteractive.bg_stroke
+                                    );
+
+                                    for row in &galley.rows {
+                                        if is_start_of_logical_line {
+                                            let pos = egui::pos2(
+                                                res.rect.min.x - 8.0, 
+                                                res.rect.min.y + margin + row.rect.min.y
+                                            );
+                                            painter.text(
+                                                pos,
+                                                egui::Align2::RIGHT_TOP,
+                                                logical_line.to_string(),
+                                                font_id.clone(),
+                                                ui.visuals().weak_text_color()
+                                            );
+                                            logical_line += 1;
+                                        }
+                                        is_start_of_logical_line = row.ends_with_newline;
+                                    }
                                 }
                             }
-                            return Some((line, col));
-                        }
-                    }
-                    None
-                }).inner;
-                new_cursor_pos = inner_cursor_pos;
+                        });
+                        None::<(usize, usize)>
+                    }).inner;
+                });
             } else {
                 ui.centered_and_justified(|ui| {
                     ui.label("No open tabs. Press Ctrl+N to create a new one.");
@@ -675,6 +793,16 @@ fn setup_custom_fonts(ctx: &egui::Context) {
 fn setup_custom_style(ctx: &egui::Context, dark_mode: bool) {
     if dark_mode {
         ctx.set_visuals(egui::Visuals::dark());
+        
+        let mut style = (*ctx.style()).clone();
+        // Lighter grey background for dark mode as requested
+        let dark_grey = egui::Color32::from_gray(40);
+        style.visuals.widgets.noninteractive.bg_fill = dark_grey;
+        style.visuals.window_fill = dark_grey;
+        style.visuals.panel_fill = dark_grey;
+        style.visuals.extreme_bg_color = egui::Color32::from_gray(55); // Even lighter for text area
+        
+        ctx.set_style(style);
     } else {
         ctx.set_visuals(egui::Visuals::light());
         

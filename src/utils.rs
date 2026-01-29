@@ -2,7 +2,7 @@ use eframe::egui::IconData;
 use std::path::Path;
 
 pub fn load_icon() -> IconData {
-    let icon_path = Path::new("assets/journal-alt.ico");
+    let icon_path = Path::new("assets/journal-alt.png");
     
     // In a real app, you might want to embed the icon bytes using `include_bytes!`
     // or handle the error more gracefully.

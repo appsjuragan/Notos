@@ -131,12 +131,7 @@ impl EditorTab {
         }
     }
 
-    pub fn set_content(&mut self, content: String) {
-        if self.content != content {
-            self.content = content;
-            self.is_dirty = true;
-        }
-    }
+
 
     pub fn set_path(&mut self, path: PathBuf) {
         self.title = path.file_name()
