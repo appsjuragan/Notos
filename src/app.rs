@@ -183,6 +183,17 @@ impl eframe::App for NotosApp {
             }
         }
 
+        // Zoom Shortcuts
+        if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::Plus)) {
+            self.editor_font_size = (self.editor_font_size + 1.0).clamp(6.0, 72.0);
+        }
+        if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::Minus)) {
+            self.editor_font_size = (self.editor_font_size - 1.0).clamp(6.0, 72.0);
+        }
+        if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::Num0)) {
+            self.editor_font_size = 14.0;
+        }
+
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::F5)) {
             if let Some(tab) = self.active_tab_mut() {
                 let now = chrono::Local::now();
@@ -587,17 +598,31 @@ impl eframe::App for NotosApp {
                     ui.label(format!("Length: {} chars", chars));
                     
                     let mut switch_to_tab = None;
+                    let mut close_tab_id = None;
                     ui.menu_button(format!("Tabs: {}", self.tabs.len()), |ui| {
                         ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
                         for t in &self.tabs {
-                            if ui.button(&t.title).clicked() {
-                                switch_to_tab = Some(t.id);
-                                ui.close_menu();
-                            }
+                            ui.horizontal(|ui| {
+                                if ui.button(&t.title).clicked() {
+                                    switch_to_tab = Some(t.id);
+                                    ui.close_menu();
+                                }
+                                if ui.button("x").clicked() {
+                                    close_tab_id = Some(t.id);
+                                }
+                            });
                         }
                     });
                     if let Some(id) = switch_to_tab {
                         self.active_tab_id = Some(id);
+                    }
+                    if let Some(id) = close_tab_id {
+                        if let Some(index) = self.tabs.iter().position(|t| t.id == id) {
+                            self.tabs.remove(index);
+                            if self.active_tab_id == Some(id) {
+                                self.active_tab_id = self.tabs.first().map(|t| t.id);
+                            }
+                        }
                     }
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
