@@ -1,14 +1,15 @@
 use egui::Ui;
 use crate::editor::EditorTab;
 
-pub fn tab_bar(ui: &mut Ui, tabs: &mut Vec<EditorTab>, active_tab_id: &mut Option<uuid::Uuid>) {
-    #[derive(Clone, Copy)]
-    enum TabAction {
-        Close(usize),
-        CloseOthers(usize),
-        New,
-    }
+#[derive(Clone, Copy)]
+pub enum TabAction {
+    Select(uuid::Uuid),
+    Close(uuid::Uuid),
+    CloseOthers(uuid::Uuid),
+    New,
+}
 
+pub fn tab_bar(ui: &mut Ui, tabs: &[EditorTab], active_tab_id: Option<uuid::Uuid>) -> Option<TabAction> {
     let action = ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
         let mut action = None;
 
@@ -27,8 +28,8 @@ pub fn tab_bar(ui: &mut Ui, tabs: &mut Vec<EditorTab>, active_tab_id: &mut Optio
                     ui.set_min_height(32.0);
                     ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
                         let mut inner_action = None;
-                        for (index, tab) in tabs.iter().enumerate() {
-                            let is_active = Some(tab.id) == get_active_tab_id(active_tab_id);
+                        for tab in tabs {
+                            let is_active = Some(tab.id) == active_tab_id;
 
                             let response = ui.scope(|ui| {
                                 ui.horizontal(|ui| {
@@ -40,34 +41,32 @@ pub fn tab_bar(ui: &mut Ui, tabs: &mut Vec<EditorTab>, active_tab_id: &mut Optio
                                         tab.title.clone()
                                     };
 
-                                    // Use selectable_label for the title - it handles hover/active colors perfectly
                                     let label_res = ui.selectable_label(is_active, title);
                                     if label_res.clicked() {
-                                        *active_tab_id = Some(tab.id);
+                                        inner_action = Some(TabAction::Select(tab.id));
                                     }
                                     
                                     if label_res.middle_clicked() {
-                                        inner_action = Some(TabAction::Close(index));
+                                        inner_action = Some(TabAction::Close(tab.id));
                                     }
 
                                     label_res.context_menu(|ui| {
                                         if ui.button("Close").clicked() {
-                                            inner_action = Some(TabAction::Close(index));
+                                            inner_action = Some(TabAction::Close(tab.id));
                                             ui.close_menu();
                                         }
                                         if ui.button("Close Others").clicked() {
-                                            inner_action = Some(TabAction::CloseOthers(index));
+                                            inner_action = Some(TabAction::CloseOthers(tab.id));
                                             ui.close_menu();
                                         }
                                     });
 
                                     if ui.small_button("x").clicked() {
-                                        inner_action = Some(TabAction::Close(index));
+                                        inner_action = Some(TabAction::Close(tab.id));
                                     }
                                 });
                             }).response;
 
-                            // Draw a subtle border around the tab
                             let stroke = ui.visuals().widgets.noninteractive.bg_stroke;
                             ui.painter().rect_stroke(response.rect.expand(4.0), 4.0, stroke);
 
@@ -88,31 +87,5 @@ pub fn tab_bar(ui: &mut Ui, tabs: &mut Vec<EditorTab>, active_tab_id: &mut Optio
         action
     }).inner;
 
-    match action {
-        Some(TabAction::New) => {
-            let new_tab = EditorTab::default();
-            *active_tab_id = Some(new_tab.id);
-            tabs.push(new_tab);
-        }
-        Some(TabAction::Close(index)) => {
-            if index < tabs.len() {
-                let removed = tabs.remove(index);
-                if Some(removed.id) == *active_tab_id {
-                    *active_tab_id = tabs.last().map(|t| t.id);
-                }
-            }
-        }
-        Some(TabAction::CloseOthers(index)) => {
-            if index < tabs.len() {
-                let keep_id = tabs[index].id;
-                tabs.retain(|t| t.id == keep_id);
-                *active_tab_id = Some(keep_id);
-            }
-        }
-        None => {}
-    }
-}
-
-fn get_active_tab_id(id: &Option<uuid::Uuid>) -> Option<uuid::Uuid> {
-    *id
+    action
 }

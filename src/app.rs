@@ -713,7 +713,31 @@ impl eframe::App for NotosApp {
             });
             
             ui.add_space(4.0);
-            ui::tab_bar(ui, &mut self.tabs, &mut self.active_tab_id);
+            if let Some(action) = ui::tab_bar(ui, &self.tabs, self.active_tab_id) {
+                match action {
+                    ui::TabAction::New => {
+                        let tab = EditorTab::default();
+                        self.active_tab_id = Some(tab.id);
+                        self.tabs.push(tab);
+                    }
+                    ui::TabAction::Select(id) => {
+                        self.active_tab_id = Some(id);
+                    }
+                    ui::TabAction::Close(id) => {
+                        self.close_tab(id);
+                    }
+                    ui::TabAction::CloseOthers(id) => {
+                        // For simplicity, we'll just close them one by one or handle it specifically
+                        let ids_to_close: Vec<_> = self.tabs.iter()
+                            .filter(|t| t.id != id)
+                            .map(|t| t.id)
+                            .collect();
+                        for close_id in ids_to_close {
+                            self.close_tab(close_id);
+                        }
+                    }
+                }
+            }
         });
 
         // Bottom Panel: Status Bar
