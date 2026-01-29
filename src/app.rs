@@ -139,6 +139,22 @@ impl NotosApp {
 
 impl eframe::App for NotosApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Handle Drag and Drop
+        let dropped_files = ctx.input(|i| i.raw.dropped_files.clone());
+        for file in dropped_files {
+            if let Some(path) = file.path {
+                match EditorTab::from_file(path) {
+                    Ok(tab) => {
+                        self.active_tab_id = Some(tab.id);
+                        self.tabs.push(tab);
+                    }
+                    Err(e) => {
+                        log::error!("Failed to open dropped file: {}", e);
+                    }
+                }
+            }
+        }
+
         // Handle Keyboard Shortcuts
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::N)) {
             let tab = EditorTab::default();

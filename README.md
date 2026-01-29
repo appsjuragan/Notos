@@ -9,7 +9,8 @@
 - **⚡ Blazing Fast Performance**: Built with Rust for a near-instant startup and smooth editing experience, even with large files.
 - **📑 Tabbed Workflow**: Effortlessly manage multiple documents within a single, clean window.
 - **🔍 Independent Editor Zoom**: Scale your text (Ctrl + Scroll) without affecting the UI scale—perfect for presentations or high-DPI displays.
-- **🔢 Smart Line Numbering**: Accurate line tracking that understands word wrapping. Wrapped lines show blank spaces in the gutter, maintaining logical line alignment.
+- **�️ Drag & Drop Support**: Quickly open files by dropping them anywhere into the editor window.
+- **�🔢 Smart Line Numbering**: Accurate line tracking that understands word wrapping. Wrapped lines show blank spaces in the gutter, maintaining logical line alignment.
 - **🌙 "Bit Grey" Dark Mode**: A custom-tuned dark theme designed to reduce eye strain while maintaining high contrast for readability.
 - **↔️ Flexible Word Wrap**: Toggle wrapping on the fly. When disabled, the editor provides smooth horizontal scrolling for long lines of code or data.
 - **🛠️ Extensible Architecture**: Includes a modular plugin system (featuring a built-in "About" plugin) designed for future community enhancements.
