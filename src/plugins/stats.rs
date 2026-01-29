@@ -1,14 +1,9 @@
 use crate::plugin::NotosPlugin;
 use egui::{Context, Window};
 
+#[derive(Default)]
 pub struct StatsPlugin {
     open: bool,
-}
-
-impl Default for StatsPlugin {
-    fn default() -> Self {
-        Self { open: false }
-    }
 }
 
 impl NotosPlugin for StatsPlugin {
@@ -35,7 +30,10 @@ impl NotosPlugin for StatsPlugin {
                 .resizable(false)
                 .show(ctx, |ui| {
                     ui.heading("Notos Text Editor");
-                    ui.label(format!("Version: {}\n Yet another text editor to compete with Windows Notepad.", env!("CARGO_PKG_VERSION")));
+                    ui.label(format!(
+                        "Version: {}\n Yet another text editor to compete with Windows Notepad.",
+                        env!("CARGO_PKG_VERSION")
+                    ));
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
                         ui.label("GitHub:");

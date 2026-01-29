@@ -1,11 +1,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // Hide console window on Windows in release
 
 mod app;
+mod dialogs;
 mod editor;
 mod plugin;
-mod ui;
-mod dialogs;
 mod plugins;
+mod ui;
 mod utils;
 
 use app::NotosApp;

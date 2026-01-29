@@ -1,24 +1,13 @@
-use eframe::egui;
 use crate::editor::EditorTab;
+use eframe::egui;
 
+#[derive(Default)]
 pub struct FindDialog {
     pub open: bool,
     pub query: String,
     pub replace_with: String,
     pub match_case: bool,
     pub replace_mode: bool,
-}
-
-impl Default for FindDialog {
-    fn default() -> Self {
-        Self {
-            open: false,
-            query: String::new(),
-            replace_with: String::new(),
-            match_case: false,
-            replace_mode: false,
-        }
-    }
 }
 
 impl FindDialog {
@@ -28,56 +17,63 @@ impl FindDialog {
 
         if open {
             let title = if self.replace_mode { "Replace" } else { "Find" };
-            egui::Window::new(title)
-                .open(&mut open)
-                .show(ctx, |ui| {
-                    ui.horizontal(|ui| {
-                        let res = ui.text_edit_singleline(&mut self.query);
-                        if self.open && !find_next_clicked {
-                             res.request_focus();
-                        }
-                        
-                        if res.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                            find_next_clicked = true;
-                        }
-                    });
-                    
-                    if self.replace_mode {
-                        ui.horizontal(|ui| {
-                            ui.label("Replace with:");
-                            ui.text_edit_singleline(&mut self.replace_with);
-                        });
+            egui::Window::new(title).open(&mut open).show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    let res = ui.text_edit_singleline(&mut self.query);
+                    if self.open && !find_next_clicked {
+                        res.request_focus();
                     }
 
-                    ui.checkbox(&mut self.match_case, "Match case");
-                    
-                    ui.horizontal(|ui| {
-                        if ui.button("Find Next").clicked() {
-                            find_next_clicked = true;
-                        }
-                        
-                        if self.replace_mode {
-                            if ui.button("Replace").clicked() {
-                                self.perform_replace(ctx, active_tab.as_deref_mut(), &mut find_next_clicked);
-                            }
-                            if ui.button("Replace All").clicked() {
-                                self.perform_replace_all(active_tab.as_deref_mut());
-                            }
-                        }
-                    });
+                    if res.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                        find_next_clicked = true;
+                    }
                 });
+
+                if self.replace_mode {
+                    ui.horizontal(|ui| {
+                        ui.label("Replace with:");
+                        ui.text_edit_singleline(&mut self.replace_with);
+                    });
+                }
+
+                ui.checkbox(&mut self.match_case, "Match case");
+
+                ui.horizontal(|ui| {
+                    if ui.button("Find Next").clicked() {
+                        find_next_clicked = true;
+                    }
+
+                    if self.replace_mode {
+                        if ui.button("Replace").clicked() {
+                            self.perform_replace(
+                                ctx,
+                                active_tab.as_deref_mut(),
+                                &mut find_next_clicked,
+                            );
+                        }
+                        if ui.button("Replace All").clicked() {
+                            self.perform_replace_all(active_tab.as_deref_mut());
+                        }
+                    }
+                });
+            });
         }
         self.open = open;
 
         if find_next_clicked {
-            self.perform_find_next(ctx, active_tab.as_deref_mut());
+            self.perform_find_next(ctx, active_tab);
         }
     }
 
-    fn perform_replace(&self, ctx: &egui::Context, active_tab: Option<&mut EditorTab>, find_next_clicked: &mut bool) {
+    fn perform_replace(
+        &self,
+        ctx: &egui::Context,
+        active_tab: Option<&mut EditorTab>,
+        find_next_clicked: &mut bool,
+    ) {
         let query = &self.query;
         let replace = &self.replace_with;
-        
+
         if !query.is_empty() {
             if let Some(tab) = active_tab {
                 let id = egui::Id::new("editor");
@@ -86,7 +82,7 @@ impl FindDialog {
                     if let Some(range) = state.cursor.char_range() {
                         let start = range.primary.index.min(range.secondary.index);
                         let end = range.primary.index.max(range.secondary.index);
-                        
+
                         if start < tab.content.len() && end <= tab.content.len() {
                             let selected_text = &tab.content[start..end];
                             if selected_text == query {
@@ -94,12 +90,14 @@ impl FindDialog {
                                 tab.push_undo(tab.content.clone());
                                 tab.content.replace_range(start..end, replace);
                                 tab.is_dirty = true;
-                                
+
                                 // Update cursor to end of replacement
                                 let new_idx = start + replace.len();
-                                state.cursor.set_char_range(Some(egui::text::CCursorRange::one(
-                                    egui::text::CCursor::new(new_idx),
-                                )));
+                                state
+                                    .cursor
+                                    .set_char_range(Some(egui::text::CCursorRange::one(
+                                        egui::text::CCursor::new(new_idx),
+                                    )));
                                 egui::TextEdit::store_state(ctx, id, state);
                                 tab.scroll_to_cursor = true;
                                 ctx.request_repaint();
@@ -116,7 +114,7 @@ impl FindDialog {
     fn perform_replace_all(&self, active_tab: Option<&mut EditorTab>) {
         let query = &self.query;
         let replace = &self.replace_with;
-        
+
         if !query.is_empty() {
             if let Some(tab) = active_tab {
                 let new_content = tab.content.replace(query, replace);
@@ -131,34 +129,39 @@ impl FindDialog {
 
     fn perform_find_next(&self, ctx: &egui::Context, active_tab: Option<&mut EditorTab>) {
         let query = &self.query;
-        
+
         if !query.is_empty() {
             if let Some(tab) = active_tab {
                 let text = &tab.content;
                 let id = egui::Id::new("editor");
                 let mut start_idx = 0;
-                
+
                 if let Some(state) = egui::TextEdit::load_state(ctx, id) {
                     if let Some(range) = state.cursor.char_range() {
                         // Start searching after the current selection/cursor
                         start_idx = range.primary.index.max(range.secondary.index);
                     }
                 }
-                
-                let search_slice = if start_idx < text.len() { &text[start_idx..] } else { "" };
-                
-                let found_idx = search_slice.find(query).map(|i| start_idx + i)
-                    .or_else(|| {
-                        // Wrap around
-                        text.find(query)
-                    });
+
+                let search_slice = if start_idx < text.len() {
+                    &text[start_idx..]
+                } else {
+                    ""
+                };
+
+                let found_idx = search_slice.find(query).map(|i| start_idx + i).or_else(|| {
+                    // Wrap around
+                    text.find(query)
+                });
 
                 if let Some(idx) = found_idx {
                     if let Some(mut state) = egui::TextEdit::load_state(ctx, id) {
-                            state.cursor.set_char_range(Some(egui::text::CCursorRange::two(
-                            egui::text::CCursor::new(idx),
-                            egui::text::CCursor::new(idx + query.len()),
-                        )));
+                        state
+                            .cursor
+                            .set_char_range(Some(egui::text::CCursorRange::two(
+                                egui::text::CCursor::new(idx),
+                                egui::text::CCursor::new(idx + query.len()),
+                            )));
                         egui::TextEdit::store_state(ctx, id, state);
                         tab.scroll_to_cursor = true;
                         ctx.request_repaint();
@@ -169,18 +172,10 @@ impl FindDialog {
     }
 }
 
+#[derive(Default)]
 pub struct GotoLineDialog {
     pub open: bool,
     pub line_str: String,
-}
-
-impl Default for GotoLineDialog {
-    fn default() -> Self {
-        Self {
-            open: false,
-            line_str: String::new(),
-        }
-    }
 }
 
 impl GotoLineDialog {
@@ -188,7 +183,7 @@ impl GotoLineDialog {
         let mut goto_open = self.open;
         let mut goto_clicked = false;
         if goto_open {
-             egui::Window::new("Go To Line")
+            egui::Window::new("Go To Line")
                 .open(&mut goto_open)
                 .collapsible(false)
                 .resizable(false)
@@ -203,7 +198,7 @@ impl GotoLineDialog {
                             goto_clicked = true;
                         }
                     });
-                    
+
                     if ui.button("Go To").clicked() {
                         goto_clicked = true;
                     }
@@ -218,7 +213,7 @@ impl GotoLineDialog {
                     let text = &tab.content;
                     let mut current_line = 1;
                     let mut char_idx = 0;
-                    
+
                     for (i, c) in text.char_indices() {
                         if current_line == target_line {
                             char_idx = i;
@@ -228,7 +223,7 @@ impl GotoLineDialog {
                             current_line += 1;
                         }
                     }
-                    
+
                     // If target line is beyond end, go to end
                     if current_line < target_line {
                         char_idx = text.len();
@@ -236,17 +231,19 @@ impl GotoLineDialog {
 
                     let id = egui::Id::new("editor");
                     if let Some(mut state) = egui::TextEdit::load_state(ctx, id) {
-                            state.cursor.set_char_range(Some(egui::text::CCursorRange::one(
-                            egui::text::CCursor::new(char_idx),
-                        )));
+                        state
+                            .cursor
+                            .set_char_range(Some(egui::text::CCursorRange::one(
+                                egui::text::CCursor::new(char_idx),
+                            )));
                         egui::TextEdit::store_state(ctx, id, state);
-                        
+
                         // Force scroll to cursor
                         tab.scroll_to_cursor = true;
                         ctx.request_repaint();
                         // We need to request a repaint to ensure the scroll happens
                         ctx.request_repaint();
-                        
+
                         self.open = false;
                     }
                 }
@@ -255,29 +252,20 @@ impl GotoLineDialog {
     }
 }
 
+#[derive(Default)]
 pub struct CloseConfirmationDialog {
     pub open: bool,
     pub tab_id: Option<uuid::Uuid>,
     pub closing_app: bool,
 }
 
-impl Default for CloseConfirmationDialog {
-    fn default() -> Self {
-        Self {
-            open: false,
-            tab_id: None,
-            closing_app: false,
-        }
-    }
-}
-
 impl CloseConfirmationDialog {
     pub fn show(
-        &mut self, 
-        ctx: &egui::Context, 
-        tabs: &mut Vec<EditorTab>, 
+        &mut self,
+        ctx: &egui::Context,
+        tabs: &mut Vec<EditorTab>,
         active_tab_id: &mut Option<uuid::Uuid>,
-        save_tab_fn: impl Fn(&mut EditorTab) -> anyhow::Result<()>
+        save_tab_fn: impl Fn(&mut EditorTab) -> anyhow::Result<()>,
     ) {
         if !self.open {
             return;
@@ -298,7 +286,7 @@ impl CloseConfirmationDialog {
                 let tab = &tabs[idx];
                 (tab.title.clone(), tab.id)
             };
-            
+
             egui::Window::new("Save Changes?")
                 .collapsible(false)
                 .resizable(false)
@@ -313,14 +301,12 @@ impl CloseConfirmationDialog {
                                 save_tab_fn(tab).is_ok() && !tab.is_dirty
                             };
 
-                            if saved {
-                                if !self.closing_app {
-                                    tabs.remove(idx);
-                                    if *active_tab_id == Some(tab_id) {
-                                        *active_tab_id = tabs.last().map(|t| t.id);
-                                    }
-                                    should_close_dialog = true;
+                            if saved && !self.closing_app {
+                                tabs.remove(idx);
+                                if *active_tab_id == Some(tab_id) {
+                                    *active_tab_id = tabs.last().map(|t| t.id);
                                 }
+                                should_close_dialog = true;
                             }
                         }
                         if ui.button("No").clicked() {
