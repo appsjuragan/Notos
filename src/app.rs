@@ -13,6 +13,7 @@ pub struct NotosApp {
     find_state: FindDialogState,
     goto_line_state: GotoLineState,
     word_wrap: bool,
+    dark_mode: bool,
     // Settings, etc.
 }
 
@@ -54,7 +55,8 @@ impl NotosApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         // Customize fonts/style here to match Notepad
         setup_custom_fonts(&cc.egui_ctx);
-        setup_custom_style(&cc.egui_ctx);
+        setup_custom_fonts(&cc.egui_ctx);
+        setup_custom_style(&cc.egui_ctx, false);
 
         let mut app = Self {
             tabs: vec![EditorTab::default()],
@@ -64,6 +66,7 @@ impl NotosApp {
             find_state: FindDialogState::default(),
             goto_line_state: GotoLineState::default(),
             word_wrap: true,
+            dark_mode: false,
         };
         
         if let Some(first) = app.tabs.first() {
@@ -110,8 +113,18 @@ impl NotosApp {
 
     fn save_file_as(&mut self) {
         if let Some(tab) = self.active_tab_mut() {
-            if let Some(path) = FileDialog::new().save_file() {
-                tab.path = Some(path);
+            if let Some(path) = FileDialog::new()
+                .add_filter("Text", &["txt", "md"])
+                .add_filter("Rust", &["rs", "toml"])
+                .add_filter("Python", &["py"])
+                .add_filter("JavaScript", &["js", "ts"])
+                .add_filter("HTML", &["html"])
+                .add_filter("CSS", &["css"])
+                .add_filter("All Files", &["*"])
+                .set_file_name("untitled.txt")
+                .save_file() 
+            {
+                tab.set_path(path);
                 if let Err(e) = tab.save() {
                     log::error!("Failed to save file: {}", e);
                 }
@@ -142,6 +155,34 @@ impl eframe::App for NotosApp {
                 if let Some(index) = self.tabs.iter().position(|t| t.id == id) {
                     self.tabs.remove(index);
                     self.active_tab_id = self.tabs.last().map(|t| t.id);
+                }
+            }
+        }
+
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::F5)) {
+            if let Some(tab) = self.active_tab_mut() {
+                let now = chrono::Local::now();
+                let time_str = now.format("%I:%M %p %m/%d/%Y").to_string(); // Notepad format: 12:00 PM 1/1/2023
+                
+                // We need to insert at cursor. 
+                // Since we don't track cursor index perfectly in `self.current_cursor_pos` (it's line/col),
+                // and `TextEdit` doesn't easily expose "insert at cursor" programmatically without the state,
+                // we have to rely on the `TextEdit` state again.
+                
+                let id = egui::Id::new("editor");
+                if let Some(mut state) = egui::TextEdit::load_state(ctx, id) {
+                    if let Some(range) = state.cursor.char_range() {
+                        let idx = range.primary.index;
+                        tab.push_undo(tab.content.clone());
+                        tab.content.insert_str(idx, &time_str);
+                        tab.is_dirty = true;
+                        
+                        // Move cursor
+                        state.cursor.set_char_range(Some(egui::text::CCursorRange::one(
+                            egui::text::CCursor::new(idx + time_str.len()),
+                        )));
+                        egui::TextEdit::store_state(ctx, id, state);
+                    }
                 }
             }
         }
@@ -245,12 +286,41 @@ impl eframe::App for NotosApp {
                         
                         if self.find_state.replace_mode {
                             if ui.button("Replace").clicked() {
-                                // Replace current selection if it matches, then find next
-                                // For now, let's just implement "Find Next" style replace
-                                // We need to know if current selection matches query
-                                // This is complex without direct access to selection content easily
-                                // So we will implement a simple "Replace All" for now or just "Find"
-                                // Let's try to implement Replace All
+                                let query = self.find_state.query.clone();
+                                let replace = self.find_state.replace_with.clone();
+                                
+                                if !query.is_empty() {
+                                    if let Some(tab) = self.active_tab_mut() {
+                                        let id = egui::Id::new("editor");
+                                        // Check if current selection matches query
+                                        if let Some(mut state) = egui::TextEdit::load_state(ctx, id) {
+                                            if let Some(range) = state.cursor.char_range() {
+                                                let start = range.primary.index.min(range.secondary.index);
+                                                let end = range.primary.index.max(range.secondary.index);
+                                                
+                                                // Ensure indices are valid char boundaries (TextEdit usually ensures this)
+                                                if start < tab.content.len() && end <= tab.content.len() {
+                                                    let selected_text = &tab.content[start..end];
+                                                    if selected_text == query {
+                                                        // Replace
+                                                        tab.push_undo(tab.content.clone());
+                                                        tab.content.replace_range(start..end, &replace);
+                                                        tab.is_dirty = true;
+                                                        
+                                                        // Update cursor to end of replacement
+                                                        let new_idx = start + replace.len();
+                                                        state.cursor.set_char_range(Some(egui::text::CCursorRange::one(
+                                                            egui::text::CCursor::new(new_idx),
+                                                        )));
+                                                        egui::TextEdit::store_state(ctx, id, state);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        // Find next occurrence
+                                        find_next_clicked = true;
+                                    }
+                                }
                             }
                             if ui.button("Replace All").clicked() {
                                 let query = self.find_state.query.clone();
@@ -277,16 +347,39 @@ impl eframe::App for NotosApp {
             let query = self.find_state.query.clone();
             // let match_case = self.find_state.match_case; // Unused for now
             
-            if let Some(tab) = self.active_tab_mut() {
-                let text = &tab.content;
-                if let Some(idx) = text.find(&query) {
-                    let id = egui::Id::new("editor"); // Must match the one in TextEdit
-                    if let Some(mut state) = egui::TextEdit::load_state(ctx, id) {
-                         state.cursor.set_char_range(Some(egui::text::CCursorRange::two(
-                            egui::text::CCursor::new(idx),
-                            egui::text::CCursor::new(idx + query.len()),
-                        )));
-                        egui::TextEdit::store_state(ctx, id, state);
+            if !query.is_empty() {
+                if let Some(tab) = self.active_tab_mut() {
+                    let text = &tab.content;
+                    let id = egui::Id::new("editor");
+                    let mut start_idx = 0;
+                    
+                    if let Some(state) = egui::TextEdit::load_state(ctx, id) {
+                        if let Some(range) = state.cursor.char_range() {
+                            // Start searching after the current selection/cursor
+                            start_idx = range.primary.index.max(range.secondary.index);
+                        }
+                    }
+                    
+                    // Search forward from start_idx
+                    // We need to handle potential char boundary issues if start_idx is somehow invalid, 
+                    // but TextEdit should give valid boundaries.
+                    // Also handle if start_idx is at end.
+                    let search_slice = if start_idx < text.len() { &text[start_idx..] } else { "" };
+                    
+                    let found_idx = search_slice.find(&query).map(|i| start_idx + i)
+                        .or_else(|| {
+                            // Wrap around
+                            text.find(&query)
+                        });
+
+                    if let Some(idx) = found_idx {
+                        if let Some(mut state) = egui::TextEdit::load_state(ctx, id) {
+                             state.cursor.set_char_range(Some(egui::text::CCursorRange::two(
+                                egui::text::CCursor::new(idx),
+                                egui::text::CCursor::new(idx + query.len()),
+                            )));
+                            egui::TextEdit::store_state(ctx, id, state);
+                        }
                     }
                 }
             }
@@ -349,11 +442,41 @@ impl eframe::App for NotosApp {
                         self.goto_line_state.line_str = self.current_cursor_pos.0.to_string();
                         ui.close_menu();
                     }
+                    ui.separator();
+                    if ui.button("Time/Date  F5").clicked() {
+                         // Simulate F5 press or call logic directly
+                         // For simplicity, we just close menu and let user press F5 or duplicate logic.
+                         // Duplicating logic is safer here.
+                         if let Some(tab) = self.active_tab_mut() {
+                            let now = chrono::Local::now();
+                            let time_str = now.format("%I:%M %p %m/%d/%Y").to_string();
+                            
+                            let id = egui::Id::new("editor");
+                            if let Some(mut state) = egui::TextEdit::load_state(ctx, id) {
+                                if let Some(range) = state.cursor.char_range() {
+                                    let idx = range.primary.index;
+                                    tab.push_undo(tab.content.clone());
+                                    tab.content.insert_str(idx, &time_str);
+                                    tab.is_dirty = true;
+                                    
+                                    state.cursor.set_char_range(Some(egui::text::CCursorRange::one(
+                                        egui::text::CCursor::new(idx + time_str.len()),
+                                    )));
+                                    egui::TextEdit::store_state(ctx, id, state);
+                                }
+                            }
+                        }
+                        ui.close_menu();
+                    }
                 });
 
                 ui.menu_button("View", |ui| {
                     if ui.checkbox(&mut self.word_wrap, "Word Wrap").clicked() {
                         ui.close_menu();
+                    }
+                    if ui.checkbox(&mut self.dark_mode, "Dark Mode").clicked() {
+                         setup_custom_style(ctx, self.dark_mode);
+                         ui.close_menu();
                     }
                     ui.separator();
                     if ui.button("Zoom In").clicked() { 
@@ -380,13 +503,74 @@ impl eframe::App for NotosApp {
         // Bottom Panel: Status Bar
         egui::TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                if let Some(tab) = self.tabs.iter().find(|t| Some(t.id) == self.active_tab_id) {
-                    let chars = tab.content.chars().count();
-                    ui.label(format!("Ln {}, Col {}", self.current_cursor_pos.0, self.current_cursor_pos.1));
+                let active_tab_index = self.tabs.iter().position(|t| Some(t.id) == self.active_tab_id);
+                
+                if let Some(index) = active_tab_index {
+                    let (chars, line, col) = {
+                        let tab = &self.tabs[index];
+                        (tab.content.chars().count(), self.current_cursor_pos.0, self.current_cursor_pos.1)
+                    };
+
+                    ui.label(format!("Ln {}, Col {}", line, col));
                     ui.label(format!("Length: {} chars", chars));
+                    
+                    let mut switch_to_tab = None;
+                    ui.menu_button(format!("Tabs: {}", self.tabs.len()), |ui| {
+                        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                        for t in &self.tabs {
+                            if ui.button(&t.title).clicked() {
+                                switch_to_tab = Some(t.id);
+                                ui.close_menu();
+                            }
+                        }
+                    });
+                    if let Some(id) = switch_to_tab {
+                        self.active_tab_id = Some(id);
+                    }
+
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label("UTF-8");
-                        ui.label("Windows (CRLF)");
+                        if let Some(tab) = self.tabs.get_mut(index) {
+                            ui.menu_button(tab.encoding.name(), |ui| {
+                                if ui.button("UTF-8").clicked() {
+                                    tab.encoding = encoding_rs::UTF_8;
+                                    tab.is_dirty = true;
+                                    ui.close_menu();
+                                }
+                                if ui.button("Windows-1252 (ANSI)").clicked() {
+                                    tab.encoding = encoding_rs::WINDOWS_1252;
+                                    tab.is_dirty = true;
+                                    ui.close_menu();
+                                }
+                                if ui.button("UTF-16LE").clicked() {
+                                    tab.encoding = encoding_rs::UTF_16LE;
+                                    tab.is_dirty = true;
+                                    ui.close_menu();
+                                }
+                                if ui.button("UTF-16BE").clicked() {
+                                    tab.encoding = encoding_rs::UTF_16BE;
+                                    tab.is_dirty = true;
+                                    ui.close_menu();
+                                }
+                            });
+                            
+                            ui.menu_button(tab.line_ending.name(), |ui| {
+                                if ui.button("Windows (CRLF)").clicked() {
+                                    tab.line_ending = crate::editor::LineEnding::Crlf;
+                                    tab.is_dirty = true;
+                                    ui.close_menu();
+                                }
+                                if ui.button("Unix (LF)").clicked() {
+                                    tab.line_ending = crate::editor::LineEnding::Lf;
+                                    tab.is_dirty = true;
+                                    ui.close_menu();
+                                }
+                                if ui.button("Mac (CR)").clicked() {
+                                    tab.line_ending = crate::editor::LineEnding::Cr;
+                                    tab.is_dirty = true;
+                                    ui.close_menu();
+                                }
+                            });
+                        }
                         ui.label("100%");
                     });
                 } else {
@@ -406,7 +590,7 @@ impl eframe::App for NotosApp {
             let mut previous_content = String::new();
             let mut tab_changed_idx = None;
 
-            if let Some((idx, tab)) = self.tabs.iter_mut().enumerate().find(|(i, t)| Some(t.id) == self.active_tab_id) {
+            if let Some((idx, tab)) = self.tabs.iter_mut().enumerate().find(|(_i, t)| Some(t.id) == self.active_tab_id) {
                 previous_content = tab.content.clone();
 
                 let inner_cursor_pos = egui::ScrollArea::vertical().show(ui, |ui| {
@@ -469,6 +653,10 @@ impl eframe::App for NotosApp {
             }
         });
     }
+
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.plugin_manager.on_unload();
+    }
 }
 
 fn setup_custom_fonts(ctx: &egui::Context) {
@@ -484,16 +672,24 @@ fn setup_custom_fonts(ctx: &egui::Context) {
     ctx.set_fonts(fonts);
 }
 
-fn setup_custom_style(ctx: &egui::Context) {
-    let mut style = (*ctx.style()).clone();
-    // Make it look clean and flat like Notepad
-    style.visuals.widgets.noninteractive.bg_fill = egui::Color32::WHITE;
-    style.visuals.window_fill = egui::Color32::WHITE;
-    style.visuals.panel_fill = egui::Color32::WHITE;
-    
-    // Selection color
-    style.visuals.selection.bg_fill = egui::Color32::from_rgb(0, 120, 215);
-    style.visuals.selection.stroke = egui::Stroke::new(1.0, egui::Color32::WHITE);
-    
-    ctx.set_style(style);
+fn setup_custom_style(ctx: &egui::Context, dark_mode: bool) {
+    if dark_mode {
+        ctx.set_visuals(egui::Visuals::dark());
+    } else {
+        ctx.set_visuals(egui::Visuals::light());
+        
+        // Get the fresh light style to modify
+        let mut style = (*ctx.style()).clone();
+        
+        // Make it look clean and flat like Notepad
+        style.visuals.widgets.noninteractive.bg_fill = egui::Color32::WHITE;
+        style.visuals.window_fill = egui::Color32::WHITE;
+        style.visuals.panel_fill = egui::Color32::WHITE;
+        
+        // Selection color
+        style.visuals.selection.bg_fill = egui::Color32::from_rgb(0, 120, 215);
+        style.visuals.selection.stroke = egui::Stroke::new(1.0, egui::Color32::WHITE);
+        
+        ctx.set_style(style);
+    }
 }

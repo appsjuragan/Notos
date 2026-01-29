@@ -42,13 +42,19 @@ impl PluginManager {
     }
 
     pub fn register(&mut self, plugin: Box<dyn NotosPlugin>) {
-        log::info!("Registering plugin: {}", plugin.name());
+        log::info!("Registering plugin: {} (ID: {})", plugin.name(), plugin.id());
         self.plugins.push(plugin);
     }
 
     pub fn on_load(&mut self, ctx: &Context) {
         for plugin in &mut self.plugins {
             plugin.on_load(ctx);
+        }
+    }
+
+    pub fn on_unload(&mut self) {
+        for plugin in &mut self.plugins {
+            plugin.on_unload();
         }
     }
 
