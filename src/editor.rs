@@ -1,7 +1,7 @@
-use std::path::PathBuf;
+use anyhow::{Context, Result};
 use std::fs;
 use std::io::Write;
-use anyhow::{Result, Context};
+use std::path::PathBuf;
 
 use encoding_rs::Encoding;
 
@@ -40,6 +40,7 @@ pub struct EditorTab {
     pub redo_stack: Vec<String>,
     pub encoding: &'static Encoding,
     pub line_ending: LineEnding,
+    pub scroll_to_cursor: bool,
 }
 
 impl Default for EditorTab {
@@ -57,13 +58,15 @@ impl Default for EditorTab {
             line_ending: LineEnding::Crlf,
             #[cfg(not(target_os = "windows"))]
             line_ending: LineEnding::Lf,
+            scroll_to_cursor: false,
         }
     }
 }
 
 impl EditorTab {
     pub fn new(path: Option<PathBuf>, content: String, encoding: &'static Encoding) -> Self {
-        let title = path.as_ref()
+        let title = path
+            .as_ref()
             .and_then(|p| p.file_name())
             .and_then(|n| n.to_str())
             .unwrap_or("Untitled")
@@ -82,16 +85,16 @@ impl EditorTab {
             line_ending: LineEnding::Crlf,
             #[cfg(not(target_os = "windows"))]
             line_ending: LineEnding::Lf,
+            scroll_to_cursor: false,
         }
     }
 
     pub fn from_file(path: PathBuf) -> Result<Self> {
-        let bytes = fs::read(&path)
-            .with_context(|| format!("Failed to read file: {:?}", path))?;
-        
+        let bytes = fs::read(&path).with_context(|| format!("Failed to read file: {:?}", path))?;
+
         let (cow, _, _) = encoding_rs::UTF_8.decode(&bytes);
         let mut content = cow.into_owned();
-        
+
         // Detect line ending
         let line_ending = if content.contains("\r\n") {
             LineEnding::Crlf
@@ -105,7 +108,7 @@ impl EditorTab {
         if line_ending != LineEnding::Lf {
             content = content.replace("\r\n", "\n").replace('\r', "\n");
         }
-        
+
         let mut tab = Self::new(Some(path), content, encoding_rs::UTF_8);
         tab.line_ending = line_ending;
         Ok(tab)
@@ -114,7 +117,7 @@ impl EditorTab {
     pub fn save(&mut self) -> Result<()> {
         if let Some(path) = &self.path {
             let mut file = fs::File::create(path)?;
-            
+
             // Convert LF to target line ending
             let content_to_save = if self.line_ending == LineEnding::Lf {
                 std::borrow::Cow::Borrowed(&self.content)
@@ -131,10 +134,9 @@ impl EditorTab {
         }
     }
 
-
-
     pub fn set_path(&mut self, path: PathBuf) {
-        self.title = path.file_name()
+        self.title = path
+            .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("Untitled")
             .to_string();

@@ -1,5 +1,5 @@
-use std::any::Any;
 use egui::Context;
+use std::any::Any;
 
 /// Context passed to plugins when they are initialized or executed.
 #[allow(dead_code)]
@@ -24,7 +24,7 @@ pub trait NotosPlugin: Any + Send + Sync {
 
     /// Called to extend the main menu.
     fn menu_ui(&mut self, _ui: &mut egui::Ui) {}
-    
+
     /// Called when the application is shutting down.
     fn on_unload(&mut self) {}
 }
@@ -42,7 +42,11 @@ impl PluginManager {
     }
 
     pub fn register(&mut self, plugin: Box<dyn NotosPlugin>) {
-        log::info!("Registering plugin: {} (ID: {})", plugin.name(), plugin.id());
+        log::info!(
+            "Registering plugin: {} (ID: {})",
+            plugin.name(),
+            plugin.id()
+        );
         self.plugins.push(plugin);
     }
 
