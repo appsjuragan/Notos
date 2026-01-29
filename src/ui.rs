@@ -6,7 +6,7 @@ pub fn tab_bar(ui: &mut Ui, tabs: &mut Vec<EditorTab>, active_tab_id: &mut Optio
         let mut tab_to_close = None;
 
         for (index, tab) in tabs.iter().enumerate() {
-            let is_active = Some(tab.id) == *active_active_tab_id(active_tab_id);
+            let is_active = Some(tab.id) == active_active_tab_id(active_tab_id);
             
             let title = if tab.is_dirty {
                 format!("* {}", tab.title)

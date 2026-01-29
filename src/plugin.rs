@@ -2,6 +2,7 @@ use std::any::Any;
 use egui::Context;
 
 /// Context passed to plugins when they are initialized or executed.
+#[allow(dead_code)]
 pub struct PluginContext<'a> {
     pub ctx: &'a Context,
     // We can add more access to the app state here later (e.g., current document)

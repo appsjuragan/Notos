@@ -10,7 +10,8 @@ pub struct EditorTab {
     pub content: String,
     pub path: Option<PathBuf>,
     pub is_dirty: bool,
-    // We can add undo/redo stack here later
+    pub undo_stack: Vec<String>,
+    pub redo_stack: Vec<String>,
 }
 
 impl Default for EditorTab {
@@ -21,6 +22,8 @@ impl Default for EditorTab {
             content: String::new(),
             path: None,
             is_dirty: false,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
         }
     }
 }
@@ -39,6 +42,8 @@ impl EditorTab {
             content,
             path,
             is_dirty: false,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
         }
     }
 
@@ -59,9 +64,35 @@ impl EditorTab {
         }
     }
 
+    #[allow(dead_code)]
     pub fn set_content(&mut self, content: String) {
         if self.content != content {
             self.content = content;
+            self.is_dirty = true;
+        }
+    }
+
+    pub fn push_undo(&mut self, content: String) {
+        self.undo_stack.push(content);
+        self.redo_stack.clear();
+        // Limit stack size to avoid infinite memory usage
+        if self.undo_stack.len() > 100 {
+            self.undo_stack.remove(0);
+        }
+    }
+
+    pub fn undo(&mut self) {
+        if let Some(prev) = self.undo_stack.pop() {
+            self.redo_stack.push(self.content.clone());
+            self.content = prev;
+            self.is_dirty = true; // Technically could check against saved state, but this is safe
+        }
+    }
+
+    pub fn redo(&mut self) {
+        if let Some(next) = self.redo_stack.pop() {
+            self.undo_stack.push(self.content.clone());
+            self.content = next;
             self.is_dirty = true;
         }
     }

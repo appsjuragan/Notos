@@ -4,6 +4,7 @@ mod app;
 mod editor;
 mod plugin;
 mod ui;
+mod plugins;
 
 use app::NotosApp;
 
@@ -13,11 +14,8 @@ fn main() -> eframe::Result<()> {
     let native_options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_inner_size([800.0, 600.0])
-            .with_min_inner_size([300.0, 220.0])
-            .with_icon(
-                // We can load an icon here later
-                eframe::icon_data::from_png_bytes(&include_bytes!("../assets/icon.png")[..]).ok()
-            ),
+            .with_min_inner_size([300.0, 220.0]),
+            // .with_icon(...) // Icon loading removed for now
         ..Default::default()
     };
 
