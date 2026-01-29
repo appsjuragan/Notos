@@ -1,52 +1,76 @@
-# Notos Text Editor
+# Notos
 
-A lightweight, modern text editor built with Rust and egui, inspired by the simplicity of Notepad but enhanced with modern features.
+**Notos** is a high-performance, lightweight text editor built with Rust and egui. It combines the minimalist philosophy of classic editors like Notepad with modern, developer-centric features like independent text zooming, smart line numbering, and a plugin-ready architecture.
 
-## Features
+---
 
-- **Tabbed Interface**: Open and manage multiple files simultaneously.
-- **Dynamic Zoom**: Independent editor zoom (Ctrl + Scroll) that doesn't affect the UI.
-- **Line Numbers**: Accurate line numbering with support for word wrap (wrapped lines show blank spaces).
-- **Dark Mode**: Beautiful "bit grey" dark theme for comfortable night-time editing.
-- **Word Wrap**: Toggleable word wrapping with horizontal scrolling support when disabled.
-- **Find & Replace**: Robust search and replace functionality.
-- **Go To Line**: Quickly navigate to any line in your file.
-- **Status Bar**: Real-time cursor position (Ln/Col), character count, encoding, and line ending indicators.
-- **Plugin System**: Extensible architecture (includes an "About" plugin by default).
-- **Cross-Platform**: Built with Rust for performance and portability.
+## 🚀 Key Features
 
-## Installation
+- **⚡ Blazing Fast Performance**: Built with Rust for a near-instant startup and smooth editing experience, even with large files.
+- **📑 Tabbed Workflow**: Effortlessly manage multiple documents within a single, clean window.
+- **🔍 Independent Editor Zoom**: Scale your text (Ctrl + Scroll) without affecting the UI scale—perfect for presentations or high-DPI displays.
+- **🔢 Smart Line Numbering**: Accurate line tracking that understands word wrapping. Wrapped lines show blank spaces in the gutter, maintaining logical line alignment.
+- **🌙 "Bit Grey" Dark Mode**: A custom-tuned dark theme designed to reduce eye strain while maintaining high contrast for readability.
+- **↔️ Flexible Word Wrap**: Toggle wrapping on the fly. When disabled, the editor provides smooth horizontal scrolling for long lines of code or data.
+- **🛠️ Extensible Architecture**: Includes a modular plugin system (featuring a built-in "About" plugin) designed for future community enhancements.
+- **📊 Comprehensive Status Bar**: Real-time tracking of cursor position (Ln/Col), character count, encoding (UTF-8/UTF-16), and line endings (CRLF/LF).
+
+---
+
+## ⌨️ Keyboard Shortcuts
+
+| Action | Shortcut |
+| :--- | :--- |
+| **New Tab** | `Ctrl + N` |
+| **Open File** | `Ctrl + O` |
+| **Save File** | `Ctrl + S` |
+| **Save As** | `Ctrl + Shift + S` |
+| **Find** | `Ctrl + F` |
+| **Replace** | `Ctrl + H` |
+| **Go To Line** | `Ctrl + G` |
+| **Zoom In/Out** | `Ctrl + Mouse Wheel` |
+| **Insert Date/Time** | `F5` |
+
+---
+
+## 🛠️ Installation
 
 ### Prerequisites
-
-- [Rust](https://www.rust-lang.org/tools/install) (latest stable version)
+- [Rust](https://www.rust-lang.org/tools/install) (Stable toolchain)
 
 ### Build from Source
+```bash
+# Clone the repository
+git clone https://github.com/appsjuragan/Notos
 
-```powershell
-git clone https://github.com/appsjuragan/rust-notos
-cd rust-notos
+# Navigate to the project directory
+cd Notos
+
+# Build the release binary
 cargo build --release
 ```
+The compiled executable will be available in `target/release/`.
 
-The executable will be located in `target/release/rust-notos.exe`.
+---
 
-## Usage
+## 🤝 Contributing
 
-- **Ctrl + N**: New Tab
-- **Ctrl + O**: Open File
-- **Ctrl + S**: Save File
-- **Ctrl + Shift + S**: Save As
-- **Ctrl + F**: Find
-- **Ctrl + H**: Replace
-- **Ctrl + G**: Go To Line
-- **Ctrl + Scroll**: Zoom In/Out
-- **F5**: Insert Time/Date
+Contributions are welcome! Whether it's reporting a bug, suggesting a feature, or submitting a pull request, your help makes Notos better for everyone.
 
-## License
+1. Fork the Project
+2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the Branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+---
 
-## Credits
+## 📄 License
 
-Developed by [appsjuragan](https://github.com/appsjuragan).
+Distributed under the MIT License. See `LICENSE` for more information.
+
+---
+
+## ✨ Credits
+
+Developed and maintained by [appsjuragan](https://github.com/appsjuragan).
