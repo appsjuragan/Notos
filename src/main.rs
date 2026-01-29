@@ -4,6 +4,7 @@ mod app;
 mod editor;
 mod plugin;
 mod ui;
+mod dialogs;
 mod plugins;
 mod utils;
 

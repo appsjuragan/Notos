@@ -40,6 +40,7 @@ pub struct EditorTab {
     pub redo_stack: Vec<String>,
     pub encoding: &'static Encoding,
     pub line_ending: LineEnding,
+    pub scroll_to_cursor: bool,
 }
 
 impl Default for EditorTab {
@@ -57,6 +58,7 @@ impl Default for EditorTab {
             line_ending: LineEnding::Crlf,
             #[cfg(not(target_os = "windows"))]
             line_ending: LineEnding::Lf,
+            scroll_to_cursor: false,
         }
     }
 }
@@ -82,6 +84,7 @@ impl EditorTab {
             line_ending: LineEnding::Crlf,
             #[cfg(not(target_os = "windows"))]
             line_ending: LineEnding::Lf,
+            scroll_to_cursor: false,
         }
     }
 
