@@ -603,13 +603,16 @@ impl eframe::App for NotosApp {
                         ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
                         for t in &self.tabs {
                             ui.horizontal(|ui| {
-                                if ui.button(&t.title).clicked() {
+                                ui.set_min_width(120.0);
+                                if ui.selectable_label(Some(t.id) == self.active_tab_id, &t.title).clicked() {
                                     switch_to_tab = Some(t.id);
                                     ui.close_menu();
                                 }
-                                if ui.button("x").clicked() {
-                                    close_tab_id = Some(t.id);
-                                }
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    if ui.button("x").clicked() {
+                                        close_tab_id = Some(t.id);
+                                    }
+                                });
                             });
                         }
                     });
