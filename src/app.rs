@@ -16,6 +16,8 @@ pub struct NotosApp {
     show_line_numbers: bool,
     dark_mode: bool,
     editor_font_size: f32,
+    editor_font_family: String,
+    custom_fonts: std::collections::HashMap<String, Vec<u8>>,
     // Settings, etc.
 }
 
@@ -71,6 +73,8 @@ impl NotosApp {
             show_line_numbers: false,
             dark_mode: false,
             editor_font_size: 14.0,
+            editor_font_family: "Monospace".to_string(),
+            custom_fonts: std::collections::HashMap::new(),
         };
         
         if let Some(first) = app.tabs.first() {
@@ -511,6 +515,53 @@ impl eframe::App for NotosApp {
                     if ui.button("Reset Zoom").clicked() { 
                         self.editor_font_size = 14.0;
                     }
+                    ui.separator();
+                    ui.menu_button("Change Font", |ui| {
+                        if ui.selectable_label(self.editor_font_family == "Monospace", "Monospace").clicked() {
+                            self.editor_font_family = "Monospace".to_string();
+                            ui.close_menu();
+                        }
+                        if ui.selectable_label(self.editor_font_family == "Proportional", "Proportional").clicked() {
+                            self.editor_font_family = "Proportional".to_string();
+                            ui.close_menu();
+                        }
+                        
+                        if !self.custom_fonts.is_empty() {
+                            ui.separator();
+                            for name in self.custom_fonts.keys() {
+                                if ui.selectable_label(&self.editor_font_family == name, name).clicked() {
+                                    self.editor_font_family = name.clone();
+                                    ui.close_menu();
+                                }
+                            }
+                        }
+
+                        ui.separator();
+                        if ui.button("Load Font File...").clicked() {
+                            if let Some(path) = FileDialog::new()
+                                .add_filter("Font", &["ttf", "otf"])
+                                .pick_file() 
+                            {
+                                if let Ok(bytes) = std::fs::read(&path) {
+                                    let name = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+                                    self.custom_fonts.insert(name.clone(), bytes.clone());
+                                    
+                                    // Update egui fonts
+                                    let mut fonts = egui::FontDefinitions::default();
+                                    // Re-add all custom fonts
+                                    for (n, b) in &self.custom_fonts {
+                                        fonts.font_data.insert(n.clone(), egui::FontData::from_owned(b.clone()));
+                                        fonts.families.get_mut(&egui::FontFamily::Monospace).unwrap().insert(0, n.clone());
+                                        fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap().insert(0, n.clone());
+                                    }
+                                    ctx.set_fonts(fonts);
+                                    
+                                    self.editor_font_family = name;
+                                }
+                            }
+                            ui.close_menu();
+                        }
+                    });
                 });
                 
                 // Plugin Menus
@@ -623,18 +674,23 @@ impl eframe::App for NotosApp {
             if let Some((idx, tab)) = self.tabs.iter_mut().enumerate().find(|(_i, t)| Some(t.id) == self.active_tab_id) {
                 previous_content = tab.content.clone();
 
-                // Apply font size to the editor scope
+                // Apply font size and family to the editor scope
                 ui.scope(|ui| {
+                    let font_id = if self.editor_font_family == "Proportional" {
+                        egui::FontId::proportional(self.editor_font_size)
+                    } else if self.editor_font_family == "Monospace" {
+                        egui::FontId::monospace(self.editor_font_size)
+                    } else {
+                        egui::FontId::new(self.editor_font_size, egui::FontFamily::Name(self.editor_font_family.clone().into()))
+                    };
+
                     ui.style_mut().text_styles.insert(
                         egui::TextStyle::Monospace,
-                        egui::FontId::monospace(self.editor_font_size),
+                        font_id.clone(),
                     );
-                    // Also update Body style as TextEdit might use it for some things, 
-                    // but usually code_editor uses Monospace.
-                    // Let's also update Body just in case, or for line numbers if we want them to scale too.
                     ui.style_mut().text_styles.insert(
                         egui::TextStyle::Body,
-                        egui::FontId::monospace(self.editor_font_size),
+                        font_id.clone(),
                     );
 
                     egui::ScrollArea::both()
@@ -645,7 +701,7 @@ impl eframe::App for NotosApp {
                         ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
                             ui.spacing_mut().item_spacing.x = 0.0;
                             
-                            let font_id = egui::FontId::monospace(self.editor_font_size);
+                            let font_id = font_id.clone();
                             let margin = 2.0;
 
                             let line_number_width = if self.show_line_numbers {
