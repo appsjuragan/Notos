@@ -184,7 +184,7 @@ impl eframe::App for NotosApp {
         }
 
         // Zoom Shortcuts
-        if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::Plus)) {
+        if ctx.input(|i| i.modifiers.ctrl && (i.key_pressed(egui::Key::Plus) || i.key_pressed(egui::Key::Equals))) {
             self.editor_font_size = (self.editor_font_size + 1.0).clamp(6.0, 72.0);
         }
         if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::Minus)) {
@@ -600,14 +600,22 @@ impl eframe::App for NotosApp {
                     let mut switch_to_tab = None;
                     let mut close_tab_id = None;
                     ui.menu_button(format!("Tabs: {}", self.tabs.len()), |ui| {
-                        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                        ui.set_width(220.0); // Fixed width for a more "solid" look
+                        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
+                        
                         for t in &self.tabs {
                             ui.horizontal(|ui| {
-                                ui.set_min_width(120.0);
-                                if ui.selectable_label(Some(t.id) == self.active_tab_id, &t.title).clicked() {
-                                    switch_to_tab = Some(t.id);
-                                    ui.close_menu();
-                                }
+                                let is_active = Some(t.id) == self.active_tab_id;
+                                
+                                // Allocate space for the label, leaving room for the close button
+                                let label_width = ui.available_width() - 30.0;
+                                ui.allocate_ui(egui::vec2(label_width, ui.available_height()), |ui| {
+                                    if ui.selectable_label(is_active, &t.title).clicked() {
+                                        switch_to_tab = Some(t.id);
+                                        ui.close_menu();
+                                    }
+                                });
+
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                     if ui.button("x").clicked() {
                                         close_tab_id = Some(t.id);
