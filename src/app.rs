@@ -18,7 +18,24 @@ pub struct NotosApp {
     editor_font_size: f32,
     editor_font_family: String,
     custom_fonts: std::collections::HashMap<String, Vec<u8>>,
+    close_confirmation: CloseConfirmation,
     // Settings, etc.
+}
+
+struct CloseConfirmation {
+    open: bool,
+    tab_id: Option<uuid::Uuid>, // If Some, we are trying to close a specific tab
+    closing_app: bool,          // If true, we are trying to close the whole app
+}
+
+impl Default for CloseConfirmation {
+    fn default() -> Self {
+        Self {
+            open: false,
+            tab_id: None,
+            closing_app: false,
+        }
+    }
 }
 
 struct GotoLineState {
@@ -75,6 +92,7 @@ impl NotosApp {
             editor_font_size: 14.0,
             editor_font_family: "Monospace".to_string(),
             custom_fonts: std::collections::HashMap::new(),
+            close_confirmation: CloseConfirmation::default(),
         };
         
         if let Some(first) = app.tabs.first() {
@@ -120,7 +138,25 @@ impl NotosApp {
     }
 
     fn save_file_as(&mut self) {
-        if let Some(tab) = self.active_tab_mut() {
+        if let Some(id) = self.active_tab_id {
+            self.save_tab_as_by_id(id);
+        }
+    }
+
+    fn save_tab_by_id(&mut self, id: uuid::Uuid) {
+        if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == id) {
+            if tab.path.is_some() {
+                if let Err(e) = tab.save() {
+                    log::error!("Failed to save file: {}", e);
+                }
+            } else {
+                self.save_tab_as_by_id(id);
+            }
+        }
+    }
+
+    fn save_tab_as_by_id(&mut self, id: uuid::Uuid) {
+        if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == id) {
             if let Some(path) = FileDialog::new()
                 .add_filter("Text", &["txt", "md"])
                 .add_filter("Rust", &["rs", "toml"])
@@ -139,10 +175,110 @@ impl NotosApp {
             }
         }
     }
+
+    fn close_tab(&mut self, id: uuid::Uuid) {
+        if let Some(index) = self.tabs.iter().position(|t| t.id == id) {
+            if self.tabs[index].is_dirty {
+                self.close_confirmation.open = true;
+                self.close_confirmation.tab_id = Some(id);
+                self.close_confirmation.closing_app = false;
+            } else {
+                self.tabs.remove(index);
+                if self.active_tab_id == Some(id) {
+                    self.active_tab_id = self.tabs.last().map(|t| t.id);
+                }
+            }
+        }
+    }
+
+    fn show_close_confirmation(&mut self, ctx: &egui::Context) {
+        if !self.close_confirmation.open {
+            return;
+        }
+
+        let mut should_close_dialog = false;
+        let mut tab_to_ask = None;
+
+        if let Some(id) = self.close_confirmation.tab_id {
+            tab_to_ask = self.tabs.iter().find(|t| t.id == id);
+        } else if self.close_confirmation.closing_app {
+            tab_to_ask = self.tabs.iter().find(|t| t.is_dirty);
+        }
+
+        if let Some(tab) = tab_to_ask {
+            let tab_id = tab.id;
+            let tab_title = tab.title.clone();
+            
+            egui::Window::new("Save Changes?")
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+                .show(ctx, |ui| {
+                    ui.label(format!("Do you want to save changes to \"{}\"?", tab_title));
+                    ui.add_space(12.0);
+                    ui.horizontal(|ui| {
+                        if ui.button("Yes").clicked() {
+                            self.save_tab_by_id(tab_id);
+                            // Check if it was actually saved (not dirty anymore)
+                            if let Some(t) = self.tabs.iter().find(|t| t.id == tab_id) {
+                                if !t.is_dirty {
+                                    if !self.close_confirmation.closing_app {
+                                        self.tabs.retain(|t| t.id != tab_id);
+                                        if self.active_tab_id == Some(tab_id) {
+                                            self.active_tab_id = self.tabs.last().map(|t| t.id);
+                                        }
+                                        should_close_dialog = true;
+                                    }
+                                }
+                            }
+                        }
+                        if ui.button("No").clicked() {
+                            if !self.close_confirmation.closing_app {
+                                self.tabs.retain(|t| t.id != tab_id);
+                                if self.active_tab_id == Some(tab_id) {
+                                    self.active_tab_id = self.tabs.last().map(|t| t.id);
+                                }
+                                should_close_dialog = true;
+                            } else {
+                                // Mark as not dirty so we don't ask again
+                                if let Some(t) = self.tabs.iter_mut().find(|t| t.id == tab_id) {
+                                    t.is_dirty = false;
+                                }
+                            }
+                        }
+                        if ui.button("Cancel").clicked() {
+                            self.close_confirmation.open = false;
+                            self.close_confirmation.closing_app = false;
+                        }
+                    });
+                });
+        } else {
+            // No more dirty tabs or tab already gone
+            if self.close_confirmation.closing_app {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+            should_close_dialog = true;
+        }
+
+        if should_close_dialog {
+            self.close_confirmation.open = false;
+            self.close_confirmation.tab_id = None;
+        }
+    }
 }
 
 impl eframe::App for NotosApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Handle Window Close
+        if ctx.input(|i| i.viewport().close_requested()) {
+            if self.tabs.iter().any(|t| t.is_dirty) {
+                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                self.close_confirmation.open = true;
+                self.close_confirmation.closing_app = true;
+                self.close_confirmation.tab_id = None;
+            }
+        }
+
         // Handle Drag and Drop
         let dropped_files = ctx.input(|i| i.raw.dropped_files.clone());
         for file in dropped_files {
@@ -176,10 +312,7 @@ impl eframe::App for NotosApp {
         }
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::W)) {
             if let Some(id) = self.active_tab_id {
-                if let Some(index) = self.tabs.iter().position(|t| t.id == id) {
-                    self.tabs.remove(index);
-                    self.active_tab_id = self.tabs.last().map(|t| t.id);
-                }
+                self.close_tab(id);
             }
         }
 
@@ -628,12 +761,7 @@ impl eframe::App for NotosApp {
                         self.active_tab_id = Some(id);
                     }
                     if let Some(id) = close_tab_id {
-                        if let Some(index) = self.tabs.iter().position(|t| t.id == id) {
-                            self.tabs.remove(index);
-                            if self.active_tab_id == Some(id) {
-                                self.active_tab_id = self.tabs.first().map(|t| t.id);
-                            }
-                        }
+                        self.close_tab(id);
                     }
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -878,6 +1006,8 @@ impl eframe::App for NotosApp {
                 }
             }
         });
+
+        self.show_close_confirmation(ctx);
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
