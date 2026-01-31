@@ -37,7 +37,8 @@ impl NotosPlugin for Base64Plugin {
         let mut action = PluginAction::None;
 
         if ui.button("Base64 Encode").clicked() {
-            if let Some((start, end)) = ed.selection {
+            if let Some((s, e)) = ed.selection {
+                let (start, end) = (s.min(e), s.max(e));
                 if start != end {
                     if let Some(selected_text) = ed.content.get(start..end) {
                         action = PluginAction::ReplaceSelection(self.encode(selected_text));
@@ -52,7 +53,8 @@ impl NotosPlugin for Base64Plugin {
         }
 
         if ui.button("Base64 Decode").clicked() {
-            if let Some((start, end)) = ed.selection {
+            if let Some((s, e)) = ed.selection {
+                let (start, end) = (s.min(e), s.max(e));
                 if start != end {
                     if let Some(selected_text) = ed.content.get(start..end) {
                         if let Some(decoded) = self.decode(selected_text) {
@@ -79,7 +81,8 @@ impl NotosPlugin for Base64Plugin {
         let mut action = PluginAction::None;
 
         // Only show in context menu if there's a selection
-        if let Some((start, end)) = ed.selection {
+        if let Some((s, e)) = ed.selection {
+            let (start, end) = (s.min(e), s.max(e));
             if start != end {
                 if ui.button("Base64 Encode Selection").clicked() {
                     if let Some(selected_text) = ed.content.get(start..end) {

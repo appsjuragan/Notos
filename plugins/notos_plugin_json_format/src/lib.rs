@@ -35,7 +35,8 @@ impl NotosPlugin for JsonFormatPlugin {
         let mut action = PluginAction::None;
         
         if ui.button("Format JSON").clicked() {
-            if let Some((start, end)) = ed.selection {
+            if let Some((s, e)) = ed.selection {
+                let (start, end) = (s.min(e), s.max(e));
                 if start != end {
                     // Format selection
                     if let Some(selected_text) = ed.content.get(start..end) {
