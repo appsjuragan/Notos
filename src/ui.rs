@@ -90,11 +90,11 @@ pub fn menu_bar(
         });
 
         ui.menu_button("Edit", |ui| {
-            if ui.button("⮌ Undo").clicked() {
+            if ui.button("↩ Undo").clicked() {
                 action = Some(MenuAction::Undo);
                 ui.close_menu();
             }
-            if ui.button("⮎ Redo").clicked() {
+            if ui.button("↪ Redo").clicked() {
                 action = Some(MenuAction::Redo);
                 ui.close_menu();
             }

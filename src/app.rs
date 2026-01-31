@@ -939,13 +939,13 @@ impl eframe::App for NotosApp {
 
                                 // Standard Edit actions
                                 ui.add_enabled_ui(can_undo, |ui| {
-                                    if ui.button("⮌ Undo").clicked() {
+                                    if ui.button("↩ Undo").clicked() {
                                         deferred_action = DeferredAction::Undo;
                                         ui.close_menu();
                                     }
                                 });
                                 ui.add_enabled_ui(can_redo, |ui| {
-                                    if ui.button("⮎ Redo").clicked() {
+                                    if ui.button("↪ Redo").clicked() {
                                         deferred_action = DeferredAction::Redo;
                                         ui.close_menu();
                                     }
