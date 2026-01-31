@@ -33,36 +33,30 @@ impl NotosPlugin for Base64Plugin {
         "Base64 Tool"
     }
 
-    fn menu_ui(&mut self, ui: &mut egui::Ui, ed: &EditorContext) -> PluginAction {
+    fn plugins_menu_ui(&mut self, ui: &mut egui::Ui, ed: &EditorContext) -> PluginAction {
         let mut action = PluginAction::None;
 
-        ui.menu_button("Plugins", |ui| {
-            if ui.button("Base64 Encode").clicked() {
-                if let Some((start, end)) = ed.selection {
-                    if start != end {
-                        if let Some(selected_text) = ed.content.get(start..end) {
-                            action = PluginAction::ReplaceSelection(self.encode(selected_text));
-                        }
-                    } else if !ed.content.is_empty() {
-                        action = PluginAction::ReplaceAll(self.encode(ed.content));
+        if ui.button("Base64 Encode").clicked() {
+            if let Some((start, end)) = ed.selection {
+                if start != end {
+                    if let Some(selected_text) = ed.content.get(start..end) {
+                        action = PluginAction::ReplaceSelection(self.encode(selected_text));
                     }
                 } else if !ed.content.is_empty() {
                     action = PluginAction::ReplaceAll(self.encode(ed.content));
                 }
-                ui.close_menu();
+            } else if !ed.content.is_empty() {
+                action = PluginAction::ReplaceAll(self.encode(ed.content));
             }
+            ui.close_menu();
+        }
 
-            if ui.button("Base64 Decode").clicked() {
-                if let Some((start, end)) = ed.selection {
-                    if start != end {
-                        if let Some(selected_text) = ed.content.get(start..end) {
-                            if let Some(decoded) = self.decode(selected_text) {
-                                action = PluginAction::ReplaceSelection(decoded);
-                            }
-                        }
-                    } else if !ed.content.is_empty() {
-                        if let Some(decoded) = self.decode(ed.content) {
-                            action = PluginAction::ReplaceAll(decoded);
+        if ui.button("Base64 Decode").clicked() {
+            if let Some((start, end)) = ed.selection {
+                if start != end {
+                    if let Some(selected_text) = ed.content.get(start..end) {
+                        if let Some(decoded) = self.decode(selected_text) {
+                            action = PluginAction::ReplaceSelection(decoded);
                         }
                     }
                 } else if !ed.content.is_empty() {
@@ -70,9 +64,13 @@ impl NotosPlugin for Base64Plugin {
                         action = PluginAction::ReplaceAll(decoded);
                     }
                 }
-                ui.close_menu();
+            } else if !ed.content.is_empty() {
+                if let Some(decoded) = self.decode(ed.content) {
+                    action = PluginAction::ReplaceAll(decoded);
+                }
             }
-        });
+            ui.close_menu();
+        }
 
         action
     }

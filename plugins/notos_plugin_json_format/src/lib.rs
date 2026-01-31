@@ -31,23 +31,16 @@ impl NotosPlugin for JsonFormatPlugin {
         "JSON Formatter"
     }
 
-    fn menu_ui(&mut self, ui: &mut egui::Ui, ed: &EditorContext) -> PluginAction {
+    fn plugins_menu_ui(&mut self, ui: &mut egui::Ui, ed: &EditorContext) -> PluginAction {
         let mut action = PluginAction::None;
-
-        ui.menu_button("Plugins", |ui| {
-            if ui.button("Format JSON").clicked() {
-                if let Some((start, end)) = ed.selection {
-                    if start != end {
-                        // Format selection
-                        if let Some(selected_text) = ed.content.get(start..end) {
-                            if let Some(formatted) = self.format_json(selected_text) {
-                                action = PluginAction::ReplaceSelection(formatted);
-                            }
-                        }
-                    } else {
-                        // Format entire file
-                        if let Some(formatted) = self.format_json(ed.content) {
-                            action = PluginAction::ReplaceAll(formatted);
+        
+        if ui.button("Format JSON").clicked() {
+            if let Some((start, end)) = ed.selection {
+                if start != end {
+                    // Format selection
+                    if let Some(selected_text) = ed.content.get(start..end) {
+                        if let Some(formatted) = self.format_json(selected_text) {
+                            action = PluginAction::ReplaceSelection(formatted);
                         }
                     }
                 } else {
@@ -56,9 +49,14 @@ impl NotosPlugin for JsonFormatPlugin {
                         action = PluginAction::ReplaceAll(formatted);
                     }
                 }
-                ui.close_menu();
+            } else {
+                // Format entire file
+                if let Some(formatted) = self.format_json(ed.content) {
+                    action = PluginAction::ReplaceAll(formatted);
+                }
             }
-        });
+            ui.close_menu();
+        }
 
         action
     }

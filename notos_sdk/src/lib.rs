@@ -34,8 +34,13 @@ pub trait NotosPlugin: Any + Send + Sync {
         PluginAction::None
     }
 
-    /// Called to extend the main menu.
+    /// Called to extend the existing main menu (e.g., add to Help or File).
     fn menu_ui(&mut self, _ui: &mut egui::Ui, _ed: &EditorContext) -> PluginAction {
+        PluginAction::None
+    }
+
+    /// Called to add items to the shared "Plugins" menu dropdown.
+    fn plugins_menu_ui(&mut self, _ui: &mut egui::Ui, _ed: &EditorContext) -> PluginAction {
         PluginAction::None
     }
 

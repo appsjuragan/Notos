@@ -164,4 +164,17 @@ impl PluginManager {
         }
         result
     }
+
+    pub fn plugins_menu_ui(&mut self, ui: &mut egui::Ui, ed: &EditorContext) -> PluginAction {
+        let mut result = PluginAction::None;
+        for p in &mut self.plugins {
+            unsafe {
+                let action = p.as_plugin_mut().plugins_menu_ui(ui, ed);
+                if action != PluginAction::None {
+                    result = action;
+                }
+            }
+        }
+        result
+    }
 }

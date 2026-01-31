@@ -160,8 +160,18 @@ pub fn menu_bar(
             });
         });
 
-        // Plugin Menus
-        plugin_action = plugin_manager.menu_ui(ui, ed_ctx);
+        ui.menu_button("Plugins", |ui| {
+            let p_action = plugin_manager.plugins_menu_ui(ui, ed_ctx);
+            if p_action != PluginAction::None {
+                plugin_action = p_action;
+            }
+        });
+
+        // Other plugin menu extensions (e.g., custom menus like Help)
+        let other_action = plugin_manager.menu_ui(ui, ed_ctx);
+        if plugin_action == PluginAction::None {
+            plugin_action = other_action;
+        }
     });
     (action, plugin_action)
 }
