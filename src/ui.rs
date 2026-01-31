@@ -32,6 +32,7 @@ pub enum MenuAction {
     ChangeFont(String),
     LoadFont,
     OpenRecent(std::path::PathBuf),
+    ClearHistory,
 }
 
 pub fn menu_bar(
@@ -67,21 +68,32 @@ pub fn menu_bar(
                 ui.close_menu();
             }
 
-            if !recent_files.is_empty() {
-                ui.separator();
-                ui.menu_button("🕒 Recent Files", |ui| {
+            ui.separator();
+            ui.menu_button("🕒 Recent Files", |ui| {
+                if recent_files.is_empty() {
+                    ui.label("No recent files");
+                } else {
                     for path in recent_files {
                         let label = path
                             .file_name()
                             .map(|n| n.to_string_lossy().to_string())
                             .unwrap_or_else(|| path.to_string_lossy().to_string());
-                        if ui.button(format!("📄 {}", label)).on_hover_text(path.to_string_lossy()).clicked() {
+                        if ui
+                            .button(format!("📄 {}", label))
+                            .on_hover_text(path.to_string_lossy())
+                            .clicked()
+                        {
                             action = Some(MenuAction::OpenRecent(path.clone()));
                             ui.close_menu();
                         }
                     }
-                });
-            }
+                    ui.separator();
+                    if ui.button("🗑 Clear History").clicked() {
+                        action = Some(MenuAction::ClearHistory);
+                        ui.close_menu();
+                    }
+                }
+            });
 
             ui.separator();
             if ui.button("🚪 Exit").clicked() {
@@ -306,6 +318,7 @@ pub enum StatusBarAction {
     SwitchTab(crate::editor::TabId),
     CloseTab(crate::editor::TabId),
     SetLineEnding(crate::editor::TabId, crate::editor::LineEnding),
+    SetEncoding(crate::editor::TabId, crate::editor::Encoding),
 }
 
 pub fn status_bar(
@@ -359,7 +372,36 @@ pub fn status_bar(
             // Right side items
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if let Some(tab) = tabs.get(index) {
-                    ui.label("UTF-8");
+                    ui.menu_button(tab.encoding.name(), |ui| {
+                        if ui.button("UTF-8").clicked() {
+                            action = Some(StatusBarAction::SetEncoding(
+                                tab.id,
+                                crate::editor::Encoding::Utf8,
+                            ));
+                            ui.close_menu();
+                        }
+                        if ui.button("Windows-1252").clicked() {
+                            action = Some(StatusBarAction::SetEncoding(
+                                tab.id,
+                                crate::editor::Encoding::Windows1252,
+                            ));
+                            ui.close_menu();
+                        }
+                        if ui.button("UTF-16LE").clicked() {
+                            action = Some(StatusBarAction::SetEncoding(
+                                tab.id,
+                                crate::editor::Encoding::Utf16Le,
+                            ));
+                            ui.close_menu();
+                        }
+                        if ui.button("UTF-16BE").clicked() {
+                            action = Some(StatusBarAction::SetEncoding(
+                                tab.id,
+                                crate::editor::Encoding::Utf16Be,
+                            ));
+                            ui.close_menu();
+                        }
+                    });
 
                     ui.separator();
 

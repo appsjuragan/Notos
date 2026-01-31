@@ -10,19 +10,31 @@ use std::fs; // Added
 
 use crate::editor::{EditorTab, TabId};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default)]
 struct SessionState {
+    #[serde(default)]
     tabs: Vec<EditorTab>,
+    #[serde(default)]
     active_tab_id: Option<TabId>,
+    #[serde(default = "default_true")]
     word_wrap: bool,
+    #[serde(default)]
     show_line_numbers: bool,
+    #[serde(default)]
     dark_mode: bool,
+    #[serde(default = "default_font_size")]
     editor_font_size: f32,
+    #[serde(default = "default_font_family")]
     editor_font_family: String,
+    #[serde(default)]
     custom_fonts: std::collections::HashMap<String, Vec<u8>>,
     #[serde(default)]
     recent_files: Vec<std::path::PathBuf>,
 }
+
+fn default_true() -> bool { true }
+fn default_font_size() -> f32 { 14.0 }
+fn default_font_family() -> String { "Monospace".to_string() }
 
 pub struct NotosApp {
     tabs: Vec<EditorTab>,
@@ -39,10 +51,11 @@ pub struct NotosApp {
     editor_font_family: String,
     custom_fonts: std::collections::HashMap<String, Vec<u8>>,
     recent_files: Vec<std::path::PathBuf>,
+    ipc_receiver: std::sync::mpsc::Receiver<String>,
 }
 
 impl NotosApp {
-    pub fn new(cc: &eframe::CreationContext<'_>, args: Vec<String>) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>, args: Vec<String>, rx: std::sync::mpsc::Receiver<String>) -> Self {
         // Initial setup
         setup_custom_fonts(&cc.egui_ctx);
 
@@ -61,6 +74,7 @@ impl NotosApp {
             custom_fonts: std::collections::HashMap::new(),
             close_confirmation: CloseConfirmationDialog::default(),
             recent_files: Vec::new(),
+            ipc_receiver: rx,
         };
 
         if let Some(session) = Self::load_session() {
@@ -149,6 +163,14 @@ impl NotosApp {
 
     /// Internal helper to open a path. Returns true if successful.
     fn open_path(&mut self, path: std::path::PathBuf) -> bool {
+        // Check if already open
+        if let Some(pos) = self.tabs.iter().position(|t| {
+            t.path.as_ref().map(|p| p.to_string_lossy()) == Some(path.to_string_lossy())
+        }) {
+            self.active_tab_id = Some(self.tabs[pos].id);
+            return true;
+        }
+
         let path_clone = path.clone();
         match EditorTab::from_file(path) {
             Ok(tab) => {
@@ -199,10 +221,31 @@ impl NotosApp {
 
     fn load_session() -> Option<SessionState> {
         let path = std::env::temp_dir().join("notos_session.json");
-        if let Ok(file) = fs::File::open(path) {
-            match serde_json::from_reader(file) {
-                Ok(state) => return Some(state),
-                Err(e) => log::error!("Failed to load session: {}", e),
+        if path.exists() {
+            if let Ok(file) = fs::File::open(&path) {
+                // Try standard deserialization first
+                match serde_json::from_reader(file) {
+                    Ok(state) => return Some(state),
+                    Err(e) => {
+                        log::warn!("Failed to deserialize session: {}. Attempting partial recovery...", e);
+                        // Try to at least recover recent files if possible by loading as generic JSON
+                        if let Ok(file) = fs::File::open(&path) {
+                            if let Ok(json) = serde_json::from_reader::<_, serde_json::Value>(file) {
+                                let mut state = SessionState::default();
+                                if let Some(recent) = json.get("recent_files").and_then(|v| v.as_array()) {
+                                    state.recent_files = recent.iter()
+                                        .filter_map(|v| v.as_str())
+                                        .map(std::path::PathBuf::from)
+                                        .collect();
+                                }
+                                // Restore basic view settings
+                                if let Some(d) = json.get("dark_mode").and_then(|v| v.as_bool()) { state.dark_mode = d; }
+                                if let Some(w) = json.get("word_wrap").and_then(|v| v.as_bool()) { state.word_wrap = w; }
+                                return Some(state);
+                            }
+                        }
+                    }
+                }
             }
         }
         None
@@ -348,6 +391,9 @@ impl NotosApp {
             MenuAction::Open => self.open_file(),
             MenuAction::OpenRecent(path) => {
                 self.open_path(path);
+            }
+            MenuAction::ClearHistory => {
+                self.recent_files.clear();
             }
             MenuAction::Save => self.save_file(),
             MenuAction::SaveAs => self.save_file_as(),
@@ -520,6 +566,16 @@ impl NotosApp {
 }
 impl eframe::App for NotosApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Handle IPC messages (files opened from other instances)
+        while let Ok(path_str) = self.ipc_receiver.try_recv() {
+            let path = std::path::PathBuf::from(path_str);
+            if path.exists() && path.is_file() {
+                self.open_path(path);
+                ctx.request_repaint();
+                ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            }
+        }
+
         // ALWAYS ensure visuals are synced with our state
         setup_custom_style(ctx, self.dark_mode);
 
@@ -547,10 +603,11 @@ impl eframe::App for NotosApp {
         let dropped_files = ctx.input(|i| i.raw.dropped_files.clone());
         for file in dropped_files {
             if let Some(path) = file.path {
-                match EditorTab::from_file(path) {
+                match EditorTab::from_file(path.clone()) {
                     Ok(tab) => {
                         self.active_tab_id = Some(tab.id);
                         self.tabs.push(tab);
+                        self.add_to_recent(path);
                     }
                     Err(e) => {
                         log::error!("Failed to open dropped file: {}", e);
@@ -694,8 +751,14 @@ impl eframe::App for NotosApp {
                         crate::ui::StatusBarAction::CloseTab(id) => self.close_tab(id),
                         crate::ui::StatusBarAction::SetLineEnding(id, le) => {
                             if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == id) {
-                                tab.line_ending = le;
-                                tab.is_dirty = true;
+                                 tab.line_ending = le;
+                                 tab.is_dirty = true;
+                            }
+                        }
+                        crate::ui::StatusBarAction::SetEncoding(id, enc) => {
+                            if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == id) {
+                                 tab.encoding = enc;
+                                 tab.is_dirty = true;
                             }
                         }
                     }
