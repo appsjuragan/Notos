@@ -90,11 +90,11 @@ pub fn menu_bar(
         });
 
         ui.menu_button("Edit", |ui| {
-            if ui.button("↩️ Undo").clicked() {
+            if ui.button("⮌ Undo").clicked() {
                 action = Some(MenuAction::Undo);
                 ui.close_menu();
             }
-            if ui.button("↪️ Redo").clicked() {
+            if ui.button("⮎ Redo").clicked() {
                 action = Some(MenuAction::Redo);
                 ui.close_menu();
             }
@@ -103,7 +103,7 @@ pub fn menu_bar(
                 action = Some(MenuAction::Find);
                 ui.close_menu();
             }
-            if ui.button("🔁 Replace").clicked() {
+            if ui.button("🔄 Replace").clicked() {
                 action = Some(MenuAction::Replace);
                 ui.close_menu();
             }
@@ -119,7 +119,7 @@ pub fn menu_bar(
         });
 
         ui.menu_button("View", |ui| {
-            if ui.checkbox(word_wrap, "🌯 Word Wrap").clicked() {
+            if ui.checkbox(word_wrap, "Wrap Word").clicked() {
                 action = Some(MenuAction::ToggleWordWrap);
                 ui.close_menu();
             }
