@@ -2433,7 +2433,7 @@ checksum = "0676bb32a98c1a483ce53e500a81ad9c3d5b3f7c920c28c24e9cb0980d0b5bc8"
 
 [[package]]
 name = "notos_plugin_about"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "eframe",
  "egui",
@@ -2443,7 +2443,7 @@ dependencies = [
 
 [[package]]
 name = "notos_plugin_base64"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "base64",
  "egui",
@@ -2453,7 +2453,7 @@ dependencies = [
 
 [[package]]
 name = "notos_plugin_json_format"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "egui",
  "log",
@@ -3373,7 +3373,7 @@ checksum = "0c6a884d2998352bb4daf0183589aec883f16a6da1f4dde84d8e2e9a5409a1ce"
 
 [[package]]
 name = "rust-notos"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "arboard",
