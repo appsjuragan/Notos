@@ -42,7 +42,7 @@ pub struct NotosApp {
 }
 
 impl NotosApp {
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>, args: Vec<String>) -> Self {
         // Initial setup
         setup_custom_fonts(&cc.egui_ctx);
 
@@ -121,8 +121,49 @@ impl NotosApp {
         app.plugin_manager.load_plugins();
         app.plugin_manager.on_load(&cc.egui_ctx);
 
+        // Handle command line arguments
+        let mut opened_any = false;
+        for arg in args {
+            let path = std::path::PathBuf::from(arg);
+            if path.exists() && path.is_file() {
+                if app.open_path(path) {
+                    opened_any = true;
+                }
+            }
+        }
+
+        // If we opened files from args and we have the default empty untitled tab, remove it
+        if opened_any && app.tabs.len() > 1 {
+            if let Some(pos) = app.tabs.iter().position(|t| t.path.is_none() && t.content.is_empty()) {
+                let id = app.tabs[pos].id;
+                app.tabs.remove(pos);
+                // If we removed the active tab, set it to the last opened one
+                if app.active_tab_id == Some(id) {
+                     app.active_tab_id = app.tabs.last().map(|t| t.id);
+                }
+            }
+        }
+
         app
     }
+
+    /// Internal helper to open a path. Returns true if successful.
+    fn open_path(&mut self, path: std::path::PathBuf) -> bool {
+        let path_clone = path.clone();
+        match EditorTab::from_file(path) {
+            Ok(tab) => {
+                self.active_tab_id = Some(tab.id);
+                self.tabs.push(tab);
+                self.add_to_recent(path_clone);
+                true
+            }
+            Err(e) => {
+                log::error!("Failed to open file {:?}: {}", path_clone, e);
+                false
+            }
+        }
+    }
+
 
     fn save_session(&self) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let filtered_tabs: Vec<EditorTab> = self.tabs
@@ -236,17 +277,7 @@ impl NotosApp {
 
     fn open_file(&mut self) {
         if let Some(path) = FileDialog::new().pick_file() {
-            let path_clone = path.clone();
-            match EditorTab::from_file(path) {
-                Ok(tab) => {
-                    self.active_tab_id = Some(tab.id);
-                    self.tabs.push(tab);
-                    self.add_to_recent(path_clone);
-                }
-                Err(e) => {
-                    log::error!("Failed to open file: {}", e);
-                }
-            }
+            self.open_path(path);
         }
     }
 
@@ -316,17 +347,7 @@ impl NotosApp {
             }
             MenuAction::Open => self.open_file(),
             MenuAction::OpenRecent(path) => {
-                let path_clone = path.clone();
-                match EditorTab::from_file(path) {
-                    Ok(tab) => {
-                        self.active_tab_id = Some(tab.id);
-                        self.tabs.push(tab);
-                        self.add_to_recent(path_clone);
-                    }
-                    Err(e) => {
-                        log::error!("Failed to open recent file: {}", e);
-                    }
-                }
+                self.open_path(path);
             }
             MenuAction::Save => self.save_file(),
             MenuAction::SaveAs => self.save_file_as(),

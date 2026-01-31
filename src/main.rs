@@ -23,9 +23,11 @@ fn main() -> eframe::Result<()> {
         ..Default::default()
     };
 
+    let args: Vec<String> = std::env::args().skip(1).collect();
+
     eframe::run_native(
         &format!("Notos Text Editor v{}", env!("CARGO_PKG_VERSION")),
         native_options,
-        Box::new(|cc| Ok(Box::new(NotosApp::new(cc)))),
+        Box::new(|cc| Ok(Box::new(NotosApp::new(cc, args)))),
     )
 }
