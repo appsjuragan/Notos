@@ -264,7 +264,7 @@ impl GotoLineDialog {
 #[derive(Default)]
 pub struct CloseConfirmationDialog {
     pub open: bool,
-    pub tab_id: Option<uuid::Uuid>,
+    pub tab_id: Option<crate::editor::TabId>,
     pub closing_app: bool,
 }
 
@@ -273,8 +273,8 @@ impl CloseConfirmationDialog {
         &mut self,
         ctx: &egui::Context,
         tabs: &mut Vec<EditorTab>,
-        active_tab_id: &mut Option<uuid::Uuid>,
-        save_tab_fn: impl Fn(&mut EditorTab) -> anyhow::Result<()>,
+        active_tab_id: &mut Option<crate::editor::TabId>,
+        save_tab_fn: impl Fn(&mut EditorTab) -> std::result::Result<(), Box<dyn std::error::Error>>,
     ) {
         if !self.open {
             return;

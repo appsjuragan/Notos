@@ -41,35 +41,46 @@ impl PluginManager {
         }
     }
 
-    /// Load all plugins from the "plugins" directory relative to executable.
+    /// Load all plugins from the executable directory and the "plugins" subdirectory.
     pub fn load_plugins(&mut self) {
         log::info!("Scanning for plugins...");
 
         let mut loaded_filenames = HashSet::new();
 
-        // Find plugins directory
+        // Find relevant directories
         let exe_path = std::env::current_exe().unwrap_or_default();
         let exe_dir = exe_path
             .parent()
             .unwrap_or_else(|| std::path::Path::new("."));
         let plugins_dir = exe_dir.join("plugins");
 
-        if !plugins_dir.exists() {
-            log::info!("Plugins folder not found at {:?}", plugins_dir);
-            return;
-        }
+        // List of directories to scan
+        let scan_dirs = vec![exe_dir.to_path_buf(), plugins_dir];
 
-        if let Ok(entries) = fs::read_dir(plugins_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if let Some(ext) = path.extension() {
-                    let ext_str = ext.to_string_lossy().to_lowercase();
-                    if ext_str == "dll" || ext_str == "so" || ext_str == "dylib" {
-                        if let Some(filename) = path.file_name() {
-                            let filename_str = filename.to_string_lossy().to_string();
-                            if loaded_filenames.insert(filename_str) {
-                                unsafe {
-                                    self.load_plugin_from_file(&path);
+        for dir in scan_dirs {
+            if !dir.exists() {
+                continue;
+            }
+
+            if let Ok(entries) = fs::read_dir(dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+
+                    // Skip the executable itself if it happens to have a library extension (unlikely but safe)
+                    if path == exe_path {
+                        continue;
+                    }
+
+                    if let Some(ext) = path.extension() {
+                        let ext_str = ext.to_string_lossy().to_lowercase();
+                        if ext_str == "dll" || ext_str == "so" || ext_str == "dylib" {
+                            if let Some(filename) = path.file_name() {
+                                let filename_str = filename.to_string_lossy().to_string();
+                                // Avoid loading the same plugin filename twice if it exists in both dirs
+                                if loaded_filenames.insert(filename_str) {
+                                    unsafe {
+                                        self.load_plugin_from_file(&path);
+                                    }
                                 }
                             }
                         }

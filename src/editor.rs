@@ -1,9 +1,7 @@
-use anyhow::{Context, Result};
+type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
-
-use encoding_rs::Encoding;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -30,38 +28,24 @@ impl LineEnding {
     }
 }
 
-mod serde_encoding {
-    use super::*;
-    use serde::{Deserializer, Serializer};
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct TabId(pub usize);
 
-    pub fn serialize<S>(encoding: &&'static Encoding, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(encoding.name())
-    }
+static TAB_ID_COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<&'static Encoding, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let name: String = String::deserialize(deserializer)?;
-        Encoding::for_label(name.as_bytes())
-            .ok_or_else(|| serde::de::Error::custom(format!("Unknown encoding: {}", name)))
-    }
+pub fn next_tab_id() -> TabId {
+    TabId(TAB_ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EditorTab {
-    pub id: uuid::Uuid,
+    pub id: TabId,
     pub title: String,
     pub content: String,
     pub path: Option<PathBuf>,
     pub is_dirty: bool,
     pub undo_stack: Vec<String>,
     pub redo_stack: Vec<String>,
-    #[serde(with = "serde_encoding")]
-    pub encoding: &'static Encoding,
     pub line_ending: LineEnding,
     pub scroll_to_cursor: bool,
     pub cursor_range: Option<(usize, usize)>,
@@ -70,14 +54,13 @@ pub struct EditorTab {
 impl Default for EditorTab {
     fn default() -> Self {
         Self {
-            id: uuid::Uuid::new_v4(),
+            id: next_tab_id(),
             title: "Untitled".to_string(),
             content: String::new(),
             path: None,
             is_dirty: false,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
-            encoding: encoding_rs::UTF_8,
             #[cfg(target_os = "windows")]
             line_ending: LineEnding::Crlf,
             #[cfg(not(target_os = "windows"))]
@@ -89,7 +72,7 @@ impl Default for EditorTab {
 }
 
 impl EditorTab {
-    pub fn new(path: Option<PathBuf>, content: String, encoding: &'static Encoding) -> Self {
+    pub fn new(path: Option<PathBuf>, content: String) -> Self {
         let title = path
             .as_ref()
             .and_then(|p| p.file_name())
@@ -98,14 +81,13 @@ impl EditorTab {
             .to_string();
 
         Self {
-            id: uuid::Uuid::new_v4(),
+            id: next_tab_id(),
             title,
             content,
             path,
             is_dirty: false,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
-            encoding,
             #[cfg(target_os = "windows")]
             line_ending: LineEnding::Crlf,
             #[cfg(not(target_os = "windows"))]
@@ -116,10 +98,9 @@ impl EditorTab {
     }
 
     pub fn from_file(path: PathBuf) -> Result<Self> {
-        let bytes = fs::read(&path).with_context(|| format!("Failed to read file: {:?}", path))?;
+        let bytes = fs::read(&path)?;
 
-        let (cow, _, _) = encoding_rs::UTF_8.decode(&bytes);
-        let mut content = cow.into_owned();
+        let mut content = String::from_utf8_lossy(&bytes).into_owned();
 
         // Detect line ending
         let line_ending = if content.contains("\r\n") {
@@ -135,7 +116,7 @@ impl EditorTab {
             content = content.replace("\r\n", "\n").replace('\r', "\n");
         }
 
-        let mut tab = Self::new(Some(path), content, encoding_rs::UTF_8);
+        let mut tab = Self::new(Some(path), content);
         tab.line_ending = line_ending;
         Ok(tab)
     }
@@ -151,12 +132,11 @@ impl EditorTab {
                 std::borrow::Cow::Owned(self.content.replace('\n', self.line_ending.as_str()))
             };
 
-            let (cow, _, _) = self.encoding.encode(&content_to_save);
-            file.write_all(&cow)?;
+            file.write_all(content_to_save.as_bytes())?;
             self.is_dirty = false;
             Ok(())
         } else {
-            Err(anyhow::anyhow!("No path set for file"))
+            Err("No path set for file".into())
         }
     }
 

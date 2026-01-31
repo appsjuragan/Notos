@@ -1,4 +1,4 @@
-use crate::editor::EditorTab;
+// use crate::editor::EditorTab;
 use crate::plugin::PluginManager;
 use eframe::egui;
 use rfd::FileDialog;
@@ -8,10 +8,12 @@ use crate::dialogs::{CloseConfirmationDialog, FindDialog, GotoLineDialog};
 use serde::{Deserialize, Serialize}; // Added
 use std::fs; // Added
 
+use crate::editor::{EditorTab, TabId};
+
 #[derive(Serialize, Deserialize)]
 struct SessionState {
     tabs: Vec<EditorTab>,
-    active_tab_id: Option<uuid::Uuid>,
+    active_tab_id: Option<TabId>,
     word_wrap: bool,
     show_line_numbers: bool,
     dark_mode: bool,
@@ -24,7 +26,7 @@ struct SessionState {
 
 pub struct NotosApp {
     tabs: Vec<EditorTab>,
-    active_tab_id: Option<uuid::Uuid>,
+    active_tab_id: Option<TabId>,
     plugin_manager: PluginManager,
     current_cursor_pos: (usize, usize), // Line, Col (1-based)
     find_dialog: FindDialog,
@@ -122,7 +124,7 @@ impl NotosApp {
         app
     }
 
-    fn save_session(&self) -> anyhow::Result<()> {
+    fn save_session(&self) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let filtered_tabs: Vec<EditorTab> = self.tabs
             .iter()
             .filter(|t| t.path.is_some() || !t.content.is_empty())
@@ -266,7 +268,7 @@ impl NotosApp {
         }
     }
 
-    fn save_tab_as_by_id(&mut self, id: uuid::Uuid) {
+    fn save_tab_as_by_id(&mut self, id: TabId) {
         if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == id) {
             if let Some(path) = FileDialog::new()
                 .add_filter("Text", &["txt", "md"])
@@ -289,7 +291,7 @@ impl NotosApp {
         }
     }
 
-    fn close_tab(&mut self, id: uuid::Uuid) {
+    fn close_tab(&mut self, id: TabId) {
         if let Some(index) = self.tabs.iter().position(|t| t.id == id) {
             if self.tabs[index].is_dirty {
                 self.close_confirmation.open = true;
@@ -552,7 +554,7 @@ impl eframe::App for NotosApp {
         self.goto_dialog.show(ctx, active_tab);
 
         // Close Confirmation
-        let save_fn = |tab: &mut EditorTab| -> anyhow::Result<()> {
+        let save_fn = |tab: &mut EditorTab| -> std::result::Result<(), Box<dyn std::error::Error>> {
             if tab.path.is_some() {
                 tab.save()
             } else if let Some(path) = FileDialog::new()
@@ -569,7 +571,7 @@ impl eframe::App for NotosApp {
                 tab.set_path(path);
                 tab.save()
             } else {
-                Err(anyhow::anyhow!("Cancelled"))
+                Err("Cancelled".into())
             }
         };
 
@@ -669,12 +671,6 @@ impl eframe::App for NotosApp {
                     match action {
                         crate::ui::StatusBarAction::SwitchTab(id) => self.active_tab_id = Some(id),
                         crate::ui::StatusBarAction::CloseTab(id) => self.close_tab(id),
-                        crate::ui::StatusBarAction::SetEncoding(id, enc) => {
-                            if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == id) {
-                                tab.encoding = enc;
-                                tab.is_dirty = true;
-                            }
-                        }
                         crate::ui::StatusBarAction::SetLineEnding(id, le) => {
                             if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == id) {
                                 tab.line_ending = le;
@@ -1070,17 +1066,80 @@ impl eframe::App for NotosApp {
 
 fn setup_custom_fonts(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
-    // We could load "Consolas" or "Cascadia Code" here if we bundled them,
-    // but for now we rely on default monospace.
-    // In a real app, we'd load system fonts.
 
-    // Example of configuring font families
-    fonts
-        .families
-        .entry(egui::FontFamily::Monospace)
-        .or_default()
-        .insert(0, "Hack".to_owned()); // If Hack was loaded
+    // Try to load system fonts to avoid bundling them (saves ~1.5MB - 2MB)
+    let mut font_data = std::collections::BTreeMap::new();
 
+    #[cfg(target_os = "windows")]
+    {
+        let font_dir = std::path::Path::new("C:\\Windows\\Fonts");
+        
+        // Proportional: Segoe UI
+        if let Ok(bytes) = std::fs::read(font_dir.join("segoeui.ttf")) {
+            font_data.insert("Segoe UI".to_owned(), egui::FontData::from_owned(bytes));
+            fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap().insert(0, "Segoe UI".to_owned());
+        } else if let Ok(bytes) = std::fs::read(font_dir.join("arial.ttf")) {
+            font_data.insert("Arial".to_owned(), egui::FontData::from_owned(bytes));
+            fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap().insert(0, "Arial".to_owned());
+        }
+
+        // Monospace: Consolas
+        if let Ok(bytes) = std::fs::read(font_dir.join("consola.ttf")) {
+            font_data.insert("Consolas".to_owned(), egui::FontData::from_owned(bytes));
+            fonts.families.get_mut(&egui::FontFamily::Monospace).unwrap().insert(0, "Consolas".to_owned());
+        } else if let Ok(bytes) = std::fs::read(font_dir.join("lucon.ttf")) { // Lucida Console
+            font_data.insert("Lucida Console".to_owned(), egui::FontData::from_owned(bytes));
+            fonts.families.get_mut(&egui::FontFamily::Monospace).unwrap().insert(0, "Lucida Console".to_owned());
+        }
+
+        // Icons & Emojis: Segoe UI Symbol & Emoji (Crucial for UI icons like ↩, ↪, 🔍)
+        if let Ok(bytes) = std::fs::read(font_dir.join("seguisym.ttf")) {
+            font_data.insert("Segoe UI Symbol".to_owned(), egui::FontData::from_owned(bytes));
+            fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap().push("Segoe UI Symbol".to_owned());
+            fonts.families.get_mut(&egui::FontFamily::Monospace).unwrap().push("Segoe UI Symbol".to_owned());
+        }
+        if let Ok(bytes) = std::fs::read(font_dir.join("seguiemj.ttf")) {
+            font_data.insert("Segoe UI Emoji".to_owned(), egui::FontData::from_owned(bytes));
+            fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap().push("Segoe UI Emoji".to_owned());
+            fonts.families.get_mut(&egui::FontFamily::Monospace).unwrap().push("Segoe UI Emoji".to_owned());
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        // Simple search for common Linux fonts
+        let paths = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        ];
+        for path in paths {
+            if let Ok(bytes) = std::fs::read(path) {
+                font_data.insert("System Sans".to_owned(), egui::FontData::from_owned(bytes));
+                fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap().insert(0, "System Sans".to_owned());
+                break;
+            }
+        }
+
+        let mono_paths = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+            "/usr/share/fonts/TTF/DejaVuSansMono.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
+        ];
+        for path in mono_paths {
+            if let Ok(bytes) = std::fs::read(path) {
+                font_data.insert("System Mono".to_owned(), egui::FontData::from_owned(bytes));
+                fonts.families.get_mut(&egui::FontFamily::Monospace).unwrap().insert(0, "System Mono".to_owned());
+                break;
+            }
+        }
+    }
+
+    if font_data.is_empty() {
+        log::warn!("No system fonts found. UI might be invisible or broken.");
+    }
+
+    fonts.font_data = font_data;
     ctx.set_fonts(fonts);
 }
 
@@ -1136,7 +1195,7 @@ fn setup_custom_style(ctx: &egui::Context, dark_mode: bool) {
 }
 fn get_ed_ctx(
     tabs: &[EditorTab],
-    active_tab_id: Option<uuid::Uuid>,
+    active_tab_id: Option<TabId>,
 ) -> notos_sdk::EditorContext<'_> {
     if let Some(tab) = tabs.iter().find(|t| Some(t.id) == active_tab_id) {
         notos_sdk::EditorContext {

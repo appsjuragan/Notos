@@ -6,19 +6,18 @@
 
 ## 🚀 Key Features
 
+- **⚡ Extreme Binary Size Optimization**: Reached **~1.8MB** (from ~13MB) by removing embedded fonts and trimming heavy dependencies like `anyhow`, `uuid`, and `encoding_rs`.
 - **🧩 Dynamic Plugin System**: Robust architecture using an external SDK (`notos_sdk`) to load `.dll`/`.so` plugins at runtime without recompiling the main app.
+- **🎨 System Font Loader**: Dynamically loads fonts from the OS (e.g., Segoe UI, Consolas, Segoe UI Symbol/Emoji on Windows). This keeps the binary small while ensuring full UTF-8 icon support.
 - **💾 Zero Data Loss**: Automatically saves your session (tabs, content, undo history, and selections) on close and restores it instantly upon reopening.
 - **🖱️ Right-Click Context Menu**: Full context menu support for Undo, Redo, Cut, Copy, Paste, and Select All.
 - **⚡ Blazing Fast Performance**: Built with Rust for a near-instant startup and smooth editing experience, even with large files.
 - **📑 Tabbed Workflow**: Effortlessly manage multiple documents within a single, clean window.
-- **🔍 Independent Editor Zoom**: Scale your text (Ctrl + Scroll) without affecting the UI scale—perfect for presentations or high-DPI displays.
-- **🔤 Custom Font Selection**: Switch between monospace and proportional fonts, or load your own `.ttf`/`.otf` files for a personalized editing experience.
-- **🖱️ Drag & Drop Support**: Quickly open files by dropping them anywhere into the editor window.
+- **🔍 Independent Editor Zoom**: Scale your text (Ctrl + Scroll) without affecting the UI scale.
 - **🔢 Smart Line Numbering**: Accurate line tracking that understands word wrapping. Wrapped lines show blank spaces in the gutter, maintaining logical line alignment.
-- **🌙 "Bit Grey" Dark Mode**: A custom-tuned dark theme designed to reduce eye strain while maintaining high contrast for readability.
-- **↔️ Flexible Word Wrap**: Toggle wrapping on the fly. When disabled, the editor provides smooth horizontal scrolling for long lines of code or data.
-- **🛠️ Extensible Architecture**: Includes a modular plugin system (featuring a built-in "About" plugin) designed for future community enhancements.
-- **📊 Comprehensive Status Bar**: Real-time tracking of cursor position (Ln/Col), character count, encoding (UTF-8/UTF-16), and line endings (CRLF/LF).
+- **🌙 "Bit Grey" Dark Mode**: A custom-tuned dark theme designed to reduce eye strain.
+- **↔️ Flexible Word Wrap**: Toggle wrapping on the fly.
+- **📊 Comprehensive Status Bar**: Real-time tracking of cursor position (Ln/Col), character count, and line endings (CRLF/LF).
 
 ---
 

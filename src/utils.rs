@@ -1,22 +1,7 @@
 use eframe::egui::IconData;
 
 pub fn load_icon() -> IconData {
-    let icon_bytes = include_bytes!("../assets/journal-alt.png");
-
-    match image::load_from_memory(icon_bytes) {
-        Ok(image) => {
-            let image = image.to_rgba8();
-            let (width, height) = image.dimensions();
-            let rgba = image.into_raw();
-            IconData {
-                rgba,
-                width,
-                height,
-            }
-        }
-        Err(e) => {
-            log::warn!("Failed to load embedded icon: {}", e);
-            IconData::default()
-        }
-    }
+    // We no longer load the PNG icon to save binary size (~1MB).
+    // The application icon is handled by winres in build.rs for Windows.
+    IconData::default()
 }

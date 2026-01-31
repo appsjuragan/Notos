@@ -5,9 +5,9 @@ use notos_sdk::{EditorContext, PluginAction};
 
 #[derive(Clone, Copy)]
 pub enum TabAction {
-    Select(uuid::Uuid),
-    Close(uuid::Uuid),
-    CloseOthers(uuid::Uuid),
+    Select(crate::editor::TabId),
+    Close(crate::editor::TabId),
+    CloseOthers(crate::editor::TabId),
     New,
 }
 
@@ -198,7 +198,7 @@ pub fn menu_bar(
 pub fn tab_bar(
     ui: &mut Ui,
     tabs: &[EditorTab],
-    active_tab_id: Option<uuid::Uuid>,
+    active_tab_id: Option<crate::editor::TabId>,
 ) -> Option<TabAction> {
     let action = ui
         .with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -303,16 +303,15 @@ pub fn tab_bar(
 }
 
 pub enum StatusBarAction {
-    SwitchTab(uuid::Uuid),
-    CloseTab(uuid::Uuid),
-    SetEncoding(uuid::Uuid, &'static encoding_rs::Encoding),
-    SetLineEnding(uuid::Uuid, crate::editor::LineEnding),
+    SwitchTab(crate::editor::TabId),
+    CloseTab(crate::editor::TabId),
+    SetLineEnding(crate::editor::TabId, crate::editor::LineEnding),
 }
 
 pub fn status_bar(
     ui: &mut Ui,
     tabs: &[EditorTab],
-    active_tab_id: Option<uuid::Uuid>,
+    active_tab_id: Option<crate::editor::TabId>,
     cursor_pos: (usize, usize),
     zoom_level: f32,
 ) -> Option<StatusBarAction> {
@@ -360,29 +359,7 @@ pub fn status_bar(
             // Right side items
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if let Some(tab) = tabs.get(index) {
-                    ui.menu_button(tab.encoding.name(), |ui| {
-                        if ui.button("UTF-8").clicked() {
-                            action = Some(StatusBarAction::SetEncoding(tab.id, encoding_rs::UTF_8));
-                            ui.close_menu();
-                        }
-                        if ui.button("Windows-1252 (ANSI)").clicked() {
-                            action = Some(StatusBarAction::SetEncoding(
-                                tab.id,
-                                encoding_rs::WINDOWS_1252,
-                            ));
-                            ui.close_menu();
-                        }
-                        if ui.button("UTF-16LE").clicked() {
-                            action =
-                                Some(StatusBarAction::SetEncoding(tab.id, encoding_rs::UTF_16LE));
-                            ui.close_menu();
-                        }
-                        if ui.button("UTF-16BE").clicked() {
-                            action =
-                                Some(StatusBarAction::SetEncoding(tab.id, encoding_rs::UTF_16BE));
-                            ui.close_menu();
-                        }
-                    });
+                    ui.label("UTF-8");
 
                     ui.separator();
 
