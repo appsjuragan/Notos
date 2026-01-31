@@ -2436,6 +2436,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "notos_plugin_json_format"
+version = "0.2.1"
+dependencies = [
+ "egui",
+ "log",
+ "notos_sdk",
+ "serde_json",
+]
+
+[[package]]
 name = "notos_sdk"
 version = "0.2.1"
 dependencies = [

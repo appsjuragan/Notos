@@ -4,7 +4,7 @@ version = "0.2.1"
 edition = "2021"
 
 [workspace]
-members = ["notos_sdk", "plugins/notos_plugin_about"]
+members = ["notos_sdk", "plugins/notos_plugin_about", "plugins/notos_plugin_json_format"]
 
 [dependencies]
 notos_sdk = { path = "./notos_sdk" }

@@ -1,6 +1,7 @@
 use crate::editor::EditorTab;
 use crate::plugin::PluginManager;
 use egui::Ui;
+use notos_sdk::{EditorContext, PluginAction};
 
 #[derive(Clone, Copy)]
 pub enum TabAction {
@@ -40,8 +41,11 @@ pub fn menu_bar(
     dark_mode: &mut bool,
     editor_font_family: &str,
     custom_fonts: &std::collections::HashMap<String, Vec<u8>>,
-) -> Option<MenuAction> {
+    ed_ctx: &EditorContext,
+) -> (Option<MenuAction>, PluginAction) {
     let mut action = None;
+    let mut plugin_action = PluginAction::None;
+
     egui::menu::bar(ui, |ui| {
         ui.menu_button("File", |ui| {
             if ui.button("New Tab").clicked() {
@@ -157,9 +161,9 @@ pub fn menu_bar(
         });
 
         // Plugin Menus
-        plugin_manager.menu_ui(ui);
+        plugin_action = plugin_manager.menu_ui(ui, ed_ctx);
     });
-    action
+    (action, plugin_action)
 }
 
 pub fn tab_bar(

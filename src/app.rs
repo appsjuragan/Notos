@@ -152,6 +152,60 @@ impl NotosApp {
             .find(|t| Some(t.id) == self.active_tab_id)
     }
 
+    fn get_editor_context(&self) -> notos_sdk::EditorContext<'_> {
+        get_ed_ctx(&self.tabs, self.active_tab_id)
+    }
+
+    fn handle_plugin_action(&mut self, action: notos_sdk::PluginAction, ctx: &egui::Context) {
+        use notos_sdk::PluginAction;
+        match action {
+            PluginAction::None => {}
+            PluginAction::ReplaceAll(new_text) => {
+                if let Some(tab) = self.active_tab_mut() {
+                    tab.push_undo(tab.content.clone());
+                    tab.content = new_text;
+                    tab.is_dirty = true;
+                }
+            }
+            PluginAction::ReplaceSelection(new_text) => {
+                if let Some(tab) = self.active_tab_mut() {
+                    let id = egui::Id::new("editor").with(tab.id);
+                    let mut state = egui::TextEdit::load_state(ctx, id).unwrap_or_default();
+                    let range = state.cursor.char_range().unwrap_or_else(|| {
+                        let (p, s) = tab.cursor_range.unwrap_or((0, 0));
+                        egui::text::CCursorRange::two(
+                            egui::text::CCursor::new(p),
+                            egui::text::CCursor::new(s),
+                        )
+                    });
+
+                    let (start, end) = (
+                        range.primary.index.min(range.secondary.index),
+                        range.primary.index.max(range.secondary.index),
+                    );
+
+                    tab.push_undo(tab.content.clone());
+                    if start != end {
+                        tab.content.replace_range(start..end, &new_text);
+                    } else {
+                        tab.content.insert_str(start, &new_text);
+                    }
+                    tab.is_dirty = true;
+
+                    // Update cursor to end of new text
+                    let new_idx = start + new_text.len();
+                    state
+                        .cursor
+                        .set_char_range(Some(egui::text::CCursorRange::one(
+                            egui::text::CCursor::new(new_idx),
+                        )));
+                    egui::TextEdit::store_state(ctx, id, state);
+                    tab.cursor_range = Some((new_idx, new_idx));
+                }
+            }
+        }
+    }
+
     fn open_file(&mut self) {
         if let Some(path) = FileDialog::new().pick_file() {
             match EditorTab::from_file(path) {
@@ -486,50 +540,72 @@ impl eframe::App for NotosApp {
             egui::Color32::WHITE
         };
 
+        // Create EditorContext for plugins
+        let ed_ctx = get_ed_ctx(&self.tabs, self.active_tab_id);
+
+        let mut menu_action_to_run = None;
+        let mut plugin_action_to_run_top = notos_sdk::PluginAction::None;
+        let mut tab_action_to_run = None;
+
+        let plugin_manager = &mut self.plugin_manager;
+        let word_wrap = &mut self.word_wrap;
+        let show_line_numbers = &mut self.show_line_numbers;
+        let dark_mode = &mut self.dark_mode;
+        let tabs = &self.tabs;
+        let active_tab_id = self.active_tab_id;
+
         // Top Panel: Menu and Tabs
         egui::TopBottomPanel::top("top_panel")
             .frame(egui::Frame::default().fill(panel_bg).inner_margin(8.0))
             .show(ctx, |ui| {
-                if let Some(action) = crate::ui::menu_bar(
+                let (m, p) = crate::ui::menu_bar(
                     ui,
-                    &mut self.plugin_manager,
-                    &mut self.word_wrap,
-                    &mut self.show_line_numbers,
-                    &mut self.dark_mode,
+                    plugin_manager,
+                    word_wrap,
+                    show_line_numbers,
+                    dark_mode,
                     &self.editor_font_family,
                     &self.custom_fonts,
-                ) {
-                    self.handle_menu_action(action, ctx);
-                }
+                    &ed_ctx,
+                );
+                menu_action_to_run = m;
+                plugin_action_to_run_top = p;
 
                 ui.add_space(4.0);
-                if let Some(action) = crate::ui::tab_bar(ui, &self.tabs, self.active_tab_id) {
-                    match action {
-                        crate::ui::TabAction::New => {
-                            let tab = EditorTab::default();
-                            self.active_tab_id = Some(tab.id);
-                            self.tabs.push(tab);
-                        }
-                        crate::ui::TabAction::Select(id) => {
-                            self.active_tab_id = Some(id);
-                        }
-                        crate::ui::TabAction::Close(id) => {
-                            self.close_tab(id);
-                        }
-                        crate::ui::TabAction::CloseOthers(id) => {
-                            let ids_to_close: Vec<_> = self
-                                .tabs
-                                .iter()
-                                .filter(|t| t.id != id)
-                                .map(|t| t.id)
-                                .collect();
-                            for close_id in ids_to_close {
-                                self.close_tab(close_id);
-                            }
-                        }
+                tab_action_to_run = crate::ui::tab_bar(ui, tabs, active_tab_id);
+            });
+
+        if let Some(action) = menu_action_to_run {
+            self.handle_menu_action(action, ctx);
+        }
+        self.handle_plugin_action(plugin_action_to_run_top, ctx);
+
+        if let Some(action) = tab_action_to_run {
+            match action {
+                crate::ui::TabAction::New => {
+                    let tab = EditorTab::default();
+                    self.active_tab_id = Some(tab.id);
+                    self.tabs.push(tab);
+                }
+                crate::ui::TabAction::Select(id) => {
+                    self.active_tab_id = Some(id);
+                }
+                crate::ui::TabAction::Close(id) => {
+                    self.close_tab(id);
+                }
+                crate::ui::TabAction::CloseOthers(id) => {
+                    let ids_to_close: Vec<_> = self
+                        .tabs
+                        .iter()
+                        .filter(|t| t.id != id)
+                        .map(|t| t.id)
+                        .collect();
+                    for close_id in ids_to_close {
+                        self.close_tab(close_id);
                     }
                 }
-            });
+            }
+        }
 
         // Bottom Panel: Status Bar
         egui::TopBottomPanel::bottom("bottom_panel")
@@ -998,7 +1074,9 @@ impl eframe::App for NotosApp {
                 }
             });
 
-        self.plugin_manager.ui(ctx);
+        let ed_ctx = get_ed_ctx(&self.tabs, self.active_tab_id);
+        let plugin_action = self.plugin_manager.ui(ctx, &ed_ctx);
+        self.handle_plugin_action(plugin_action, ctx);
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
@@ -1071,4 +1149,20 @@ fn setup_custom_style(ctx: &egui::Context, dark_mode: bool) {
     style.spacing.item_spacing = egui::vec2(8.0, 4.0);
     style.spacing.window_margin = egui::Margin::same(8.0);
     ctx.set_style(style);
+}
+fn get_ed_ctx(
+    tabs: &[EditorTab],
+    active_tab_id: Option<uuid::Uuid>,
+) -> notos_sdk::EditorContext<'_> {
+    if let Some(tab) = tabs.iter().find(|t| Some(t.id) == active_tab_id) {
+        notos_sdk::EditorContext {
+            content: &tab.content,
+            selection: tab.cursor_range,
+        }
+    } else {
+        notos_sdk::EditorContext {
+            content: "",
+            selection: None,
+        }
+    }
 }

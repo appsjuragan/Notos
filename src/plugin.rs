@@ -1,5 +1,5 @@
 use egui::Context;
-use notos_sdk::{CreatePluginFn, DestroyPluginFn, NotosPlugin};
+use notos_sdk::{CreatePluginFn, DestroyPluginFn, EditorContext, NotosPlugin, PluginAction};
 use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
@@ -113,8 +113,6 @@ impl PluginManager {
                 });
 
                 // LEAK the library handle.
-                // This ensures the DLL stays mapped in memory until the OS terminates the process.
-                // This is a standard workaround for Rust plugin crashes on exit (0xc0000005).
                 std::mem::forget(lib);
 
                 log::info!("Plugin successfully loaded and locked in memory.");
@@ -141,19 +139,29 @@ impl PluginManager {
         }
     }
 
-    pub fn ui(&mut self, ctx: &egui::Context) {
+    pub fn ui(&mut self, ctx: &egui::Context, ed: &EditorContext) -> PluginAction {
+        let mut result = PluginAction::None;
         for p in &mut self.plugins {
             unsafe {
-                p.as_plugin_mut().ui(ctx);
+                let action = p.as_plugin_mut().ui(ctx, ed);
+                if action != PluginAction::None {
+                    result = action;
+                }
             }
         }
+        result
     }
 
-    pub fn menu_ui(&mut self, ui: &mut egui::Ui) {
+    pub fn menu_ui(&mut self, ui: &mut egui::Ui, ed: &EditorContext) -> PluginAction {
+        let mut result = PluginAction::None;
         for p in &mut self.plugins {
             unsafe {
-                p.as_plugin_mut().menu_ui(ui);
+                let action = p.as_plugin_mut().menu_ui(ui, ed);
+                if action != PluginAction::None {
+                    result = action;
+                }
             }
         }
+        result
     }
 }

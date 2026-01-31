@@ -1,5 +1,5 @@
 use egui::Context;
-use notos_sdk::NotosPlugin;
+use notos_sdk::{EditorContext, NotosPlugin, PluginAction};
 
 struct AboutPlugin {
     open: bool,
@@ -20,16 +20,17 @@ impl NotosPlugin for AboutPlugin {
         "About Plugin"
     }
 
-    fn menu_ui(&mut self, ui: &mut egui::Ui) {
+    fn menu_ui(&mut self, ui: &mut egui::Ui, _ed: &EditorContext) -> PluginAction {
         ui.menu_button("Help", |ui| {
             if ui.button("About Notos").clicked() {
                 self.open = true;
                 ui.close_menu();
             }
         });
+        PluginAction::None
     }
 
-    fn ui(&mut self, ctx: &Context) {
+    fn ui(&mut self, ctx: &Context, _ed: &EditorContext) -> PluginAction {
         if self.open {
             egui::Window::new("About Notos")
                 .open(&mut self.open)
@@ -43,6 +44,7 @@ impl NotosPlugin for AboutPlugin {
                     ui.hyperlink("https://github.com/appsjuragan/Notos");
                 });
         }
+        PluginAction::None
     }
 }
 
@@ -50,8 +52,6 @@ impl NotosPlugin for AboutPlugin {
 #[no_mangle]
 #[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn _create_plugin() -> *mut std::ffi::c_void {
-    // Wrap the trait object in ANOTHER box so we can pass a thin pointer to it.
-    // *mut dyn NotosPlugin is 16 bytes (fat), but *mut Box<dyn NotosPlugin> is 8 bytes (thin).
     let plugin: Box<dyn NotosPlugin> = Box::new(AboutPlugin::new());
     let wrapper = Box::new(plugin);
     Box::into_raw(wrapper) as *mut std::ffi::c_void
@@ -62,7 +62,6 @@ pub unsafe extern "C" fn _create_plugin() -> *mut std::ffi::c_void {
 #[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn _destroy_plugin(ptr: *mut std::ffi::c_void) {
     if !ptr.is_null() {
-        // Re-wrap and let it drop
         let wrapper: Box<Box<dyn NotosPlugin>> = Box::from_raw(ptr as *mut Box<dyn NotosPlugin>);
         drop(wrapper);
     }
