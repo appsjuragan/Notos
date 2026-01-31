@@ -39,22 +39,26 @@ impl FindDialog {
                 ui.checkbox(&mut self.match_case, "Match case");
 
                 ui.horizontal(|ui| {
-                    if ui.button("Find Next").clicked() {
-                        find_next_clicked = true;
-                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let button_size = egui::vec2(80.0, 24.0);
 
-                    if self.replace_mode {
-                        if ui.button("Replace").clicked() {
-                            self.perform_replace(
-                                ctx,
-                                active_tab.as_deref_mut(),
-                                &mut find_next_clicked,
-                            );
+                        if self.replace_mode {
+                            if ui.add_sized(button_size, egui::Button::new("Replace All")).clicked() {
+                                self.perform_replace_all(active_tab.as_deref_mut());
+                            }
+                            if ui.add_sized(button_size, egui::Button::new("Replace")).clicked() {
+                                self.perform_replace(
+                                    ctx,
+                                    active_tab.as_deref_mut(),
+                                    &mut find_next_clicked,
+                                );
+                            }
                         }
-                        if ui.button("Replace All").clicked() {
-                            self.perform_replace_all(active_tab.as_deref_mut());
+
+                        if ui.add_sized(button_size, egui::Button::new("Find Next")).clicked() {
+                            find_next_clicked = true;
                         }
-                    }
+                    });
                 });
             });
         }
@@ -199,9 +203,14 @@ impl GotoLineDialog {
                         }
                     });
 
-                    if ui.button("Go To").clicked() {
-                        goto_clicked = true;
-                    }
+                    ui.horizontal(|ui| {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let button_size = egui::vec2(80.0, 24.0);
+                            if ui.add_sized(button_size, egui::Button::new("Go To")).clicked() {
+                                goto_clicked = true;
+                            }
+                        });
+                    });
                 });
         }
         self.open = goto_open;
@@ -295,38 +304,44 @@ impl CloseConfirmationDialog {
                     ui.label(format!("Do you want to save changes to \"{}\"?", tab_title));
                     ui.add_space(12.0);
                     ui.horizontal(|ui| {
-                        if ui.button("Yes").clicked() {
-                            let saved = {
-                                let tab = &mut tabs[idx];
-                                save_tab_fn(tab).is_ok() && !tab.is_dirty
-                            };
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let button_size = egui::vec2(80.0, 24.0);
 
-                            if saved && !self.closing_app {
-                                tabs.remove(idx);
-                                if *active_tab_id == Some(tab_id) {
-                                    *active_tab_id = tabs.last().map(|t| t.id);
-                                }
-                                should_close_dialog = true;
+                            if ui.add_sized(button_size, egui::Button::new("Cancel")).clicked() {
+                                self.open = false;
+                                self.closing_app = false;
                             }
-                        }
-                        if ui.button("No").clicked() {
-                            if !self.closing_app {
-                                tabs.remove(idx);
-                                if *active_tab_id == Some(tab_id) {
-                                    *active_tab_id = tabs.last().map(|t| t.id);
-                                }
-                                should_close_dialog = true;
-                            } else {
-                                // Mark as not dirty so we don't ask again
-                                if let Some(tab) = tabs.get_mut(idx) {
-                                    tab.is_dirty = false;
+
+                            if ui.add_sized(button_size, egui::Button::new("No")).clicked() {
+                                if !self.closing_app {
+                                    tabs.remove(idx);
+                                    if *active_tab_id == Some(tab_id) {
+                                        *active_tab_id = tabs.last().map(|t| t.id);
+                                    }
+                                    should_close_dialog = true;
+                                } else {
+                                    // Mark as not dirty so we don't ask again
+                                    if let Some(tab) = tabs.get_mut(idx) {
+                                        tab.is_dirty = false;
+                                    }
                                 }
                             }
-                        }
-                        if ui.button("Cancel").clicked() {
-                            self.open = false;
-                            self.closing_app = false;
-                        }
+
+                            if ui.add_sized(button_size, egui::Button::new("Yes")).clicked() {
+                                let saved = {
+                                    let tab = &mut tabs[idx];
+                                    save_tab_fn(tab).is_ok() && !tab.is_dirty
+                                };
+
+                                if saved && !self.closing_app {
+                                    tabs.remove(idx);
+                                    if *active_tab_id == Some(tab_id) {
+                                        *active_tab_id = tabs.last().map(|t| t.id);
+                                    }
+                                    should_close_dialog = true;
+                                }
+                            }
+                        });
                     });
                 });
         } else {

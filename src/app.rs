@@ -123,9 +123,22 @@ impl NotosApp {
     }
 
     fn save_session(&self) -> anyhow::Result<()> {
+        let filtered_tabs: Vec<EditorTab> = self.tabs
+            .iter()
+            .filter(|t| t.path.is_some() || !t.content.is_empty())
+            .cloned()
+            .collect();
+
+        let mut active_id = self.active_tab_id;
+        if let Some(id) = active_id {
+            if !filtered_tabs.iter().any(|t| t.id == id) {
+                active_id = filtered_tabs.last().map(|t| t.id);
+            }
+        }
+
         let state = SessionState {
-            tabs: self.tabs.clone(),
-            active_tab_id: self.active_tab_id,
+            tabs: filtered_tabs,
+            active_tab_id: active_id,
             word_wrap: self.word_wrap,
             show_line_numbers: self.show_line_numbers,
             dark_mode: self.dark_mode,
@@ -168,9 +181,6 @@ impl NotosApp {
         self.recent_files.truncate(8);
     }
 
-    fn get_editor_context(&self) -> notos_sdk::EditorContext<'_> {
-        get_ed_ctx(&self.tabs, self.active_tab_id)
-    }
 
     fn handle_plugin_action(&mut self, action: notos_sdk::PluginAction, ctx: &egui::Context) {
         use notos_sdk::PluginAction;
