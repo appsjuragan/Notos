@@ -4,8 +4,9 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use encoding_rs::Encoding;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum LineEnding {
     Crlf,
     Lf,
@@ -29,7 +30,28 @@ impl LineEnding {
     }
 }
 
-#[derive(Clone, Debug)]
+mod serde_encoding {
+    use super::*;
+    use serde::{Deserializer, Serializer};
+
+    pub fn serialize<S>(encoding: &&'static Encoding, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(encoding.name())
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<&'static Encoding, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let name: String = String::deserialize(deserializer)?;
+        Encoding::for_label(name.as_bytes())
+            .ok_or_else(|| serde::de::Error::custom(format!("Unknown encoding: {}", name)))
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EditorTab {
     pub id: uuid::Uuid,
     pub title: String,
@@ -38,9 +60,11 @@ pub struct EditorTab {
     pub is_dirty: bool,
     pub undo_stack: Vec<String>,
     pub redo_stack: Vec<String>,
+    #[serde(with = "serde_encoding")]
     pub encoding: &'static Encoding,
     pub line_ending: LineEnding,
     pub scroll_to_cursor: bool,
+    pub cursor_range: Option<(usize, usize)>,
 }
 
 impl Default for EditorTab {
@@ -59,6 +83,7 @@ impl Default for EditorTab {
             #[cfg(not(target_os = "windows"))]
             line_ending: LineEnding::Lf,
             scroll_to_cursor: false,
+            cursor_range: None,
         }
     }
 }
@@ -86,6 +111,7 @@ impl EditorTab {
             #[cfg(not(target_os = "windows"))]
             line_ending: LineEnding::Lf,
             scroll_to_cursor: false,
+            cursor_range: None,
         }
     }
 

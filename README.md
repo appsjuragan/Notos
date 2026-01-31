@@ -6,6 +6,8 @@
 
 ## 🚀 Key Features
 
+- **💾 Zero Data Loss**: Automatically saves your session (tabs, content, undo history, and selections) on close and restores it instantly upon reopening.
+- **🖱️ Right-Click Context Menu**: Full context menu support for Undo, Redo, Cut, Copy, Paste, and Select All.
 - **⚡ Blazing Fast Performance**: Built with Rust for a near-instant startup and smooth editing experience, even with large files.
 - **📑 Tabbed Workflow**: Effortlessly manage multiple documents within a single, clean window.
 - **🔍 Independent Editor Zoom**: Scale your text (Ctrl + Scroll) without affecting the UI scale—perfect for presentations or high-DPI displays.

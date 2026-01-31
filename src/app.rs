@@ -5,6 +5,20 @@ use rfd::FileDialog;
 // use std::path::PathBuf;
 
 use crate::dialogs::{CloseConfirmationDialog, FindDialog, GotoLineDialog};
+use serde::{Deserialize, Serialize}; // Added
+use std::fs; // Added
+
+#[derive(Serialize, Deserialize)]
+struct SessionState {
+    tabs: Vec<EditorTab>,
+    active_tab_id: Option<uuid::Uuid>,
+    word_wrap: bool,
+    show_line_numbers: bool,
+    dark_mode: bool,
+    editor_font_size: f32,
+    editor_font_family: String,
+    custom_fonts: std::collections::HashMap<String, Vec<u8>>,
+}
 
 pub struct NotosApp {
     tabs: Vec<EditorTab>,
@@ -45,7 +59,51 @@ impl NotosApp {
             close_confirmation: CloseConfirmationDialog::default(),
         };
 
-        if let Some(first) = app.tabs.first() {
+        if let Some(session) = Self::load_session() {
+            app.tabs = session.tabs;
+            app.active_tab_id = session.active_tab_id;
+            app.word_wrap = session.word_wrap;
+            app.show_line_numbers = session.show_line_numbers;
+            app.dark_mode = session.dark_mode;
+            app.editor_font_size = session.editor_font_size;
+            app.editor_font_family = session.editor_font_family;
+            app.custom_fonts = session.custom_fonts;
+
+            // Restore fonts in egui
+            let mut fonts = egui::FontDefinitions::default();
+            for (n, b) in &app.custom_fonts {
+                fonts
+                    .font_data
+                    .insert(n.clone(), egui::FontData::from_owned(b.clone()));
+                fonts
+                    .families
+                    .get_mut(&egui::FontFamily::Monospace)
+                    .unwrap()
+                    .insert(0, n.clone());
+                fonts
+                    .families
+                    .get_mut(&egui::FontFamily::Proportional)
+                    .unwrap()
+                    .insert(0, n.clone());
+            }
+            if !app.custom_fonts.is_empty() {
+                cc.egui_ctx.set_fonts(fonts);
+            }
+
+            setup_custom_style(&cc.egui_ctx, app.dark_mode);
+
+            // Ensure at least one tab or fix active tab
+            if app.tabs.is_empty() {
+                let tab = EditorTab::default();
+                app.active_tab_id = Some(tab.id);
+                app.tabs.push(tab);
+            }
+
+            // Mark all tabs to restore cursor
+            for tab in &mut app.tabs {
+                tab.scroll_to_cursor = true;
+            }
+        } else if let Some(first) = app.tabs.first() {
             app.active_tab_id = Some(first.id);
         }
 
@@ -56,6 +114,35 @@ impl NotosApp {
         app.plugin_manager.on_load(&cc.egui_ctx);
 
         app
+    }
+
+    fn save_session(&self) -> anyhow::Result<()> {
+        let state = SessionState {
+            tabs: self.tabs.clone(),
+            active_tab_id: self.active_tab_id,
+            word_wrap: self.word_wrap,
+            show_line_numbers: self.show_line_numbers,
+            dark_mode: self.dark_mode,
+            editor_font_size: self.editor_font_size,
+            editor_font_family: self.editor_font_family.clone(),
+            custom_fonts: self.custom_fonts.clone(),
+        };
+
+        let path = std::env::temp_dir().join("notos_session.json");
+        let file = fs::File::create(path)?;
+        serde_json::to_writer(file, &state)?;
+        Ok(())
+    }
+
+    fn load_session() -> Option<SessionState> {
+        let path = std::env::temp_dir().join("notos_session.json");
+        if let Ok(file) = fs::File::open(path) {
+            match serde_json::from_reader(file) {
+                Ok(state) => return Some(state),
+                Err(e) => log::error!("Failed to load session: {}", e),
+            }
+        }
+        None
     }
 
     fn active_tab_mut(&mut self) -> Option<&mut EditorTab> {
@@ -171,7 +258,7 @@ impl NotosApp {
                     let now = chrono::Local::now();
                     let time_str = now.format("%I:%M %p %m/%d/%Y").to_string();
 
-                    let id = egui::Id::new("editor");
+                    let id = egui::Id::new("editor").with(tab.id);
                     if let Some(mut state) = egui::TextEdit::load_state(ctx, id) {
                         if let Some(range) = state.cursor.char_range() {
                             let idx = range.primary.index;
@@ -314,11 +401,23 @@ impl NotosApp {
 impl eframe::App for NotosApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Handle Window Close
-        if ctx.input(|i| i.viewport().close_requested()) && self.tabs.iter().any(|t| t.is_dirty) {
-            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            self.close_confirmation.open = true;
-            self.close_confirmation.closing_app = true;
-            self.close_confirmation.tab_id = None;
+        if ctx.input(|i| i.viewport().close_requested()) {
+            match self.save_session() {
+                Ok(_) => {
+                    // Session saved, allow close without confirmation
+                    // Do not cancel close
+                }
+                Err(e) => {
+                    log::error!("Failed to save session: {}", e);
+                    // Fallback to confirmation if save failed and dirty
+                    if self.tabs.iter().any(|t| t.is_dirty) {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                        self.close_confirmation.open = true;
+                        self.close_confirmation.closing_app = true;
+                        self.close_confirmation.tab_id = None;
+                    }
+                }
+            }
         }
 
         // Handle Drag and Drop
@@ -522,7 +621,7 @@ impl eframe::App for NotosApp {
                             let res = ui.add_sized(
                                 [ui.available_width(), available_height],
                                 egui::TextEdit::multiline(&mut tab.content)
-                                    .id(egui::Id::new("editor"))
+                                    .id(egui::Id::new("editor").with(tab.id))
                                     .font(font_id.clone())
                                     .frame(false)
                                     .code_editor()
@@ -538,6 +637,20 @@ impl eframe::App for NotosApp {
 
                             if tab.scroll_to_cursor {
                                 res.request_focus();
+                                // Restore cursor position
+                                let id = egui::Id::new("editor").with(tab.id);
+                                let mut state =
+                                    egui::TextEdit::load_state(ui.ctx(), id).unwrap_or_default();
+                                if let Some((p, s)) = tab.cursor_range {
+                                    state.cursor.set_char_range(Some(
+                                        egui::text::CCursorRange::two(
+                                            egui::text::CCursor::new(p),
+                                            egui::text::CCursor::new(s),
+                                        ),
+                                    ));
+                                }
+                                egui::TextEdit::store_state(ui.ctx(), id, state);
+
                                 tab.scroll_to_cursor = false;
                             }
 
@@ -547,8 +660,37 @@ impl eframe::App for NotosApp {
                                 tab_changed_idx = Some(idx);
                             }
 
-                            if let Some(state) = egui::TextEdit::load_state(ui.ctx(), res.id) {
+                            if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), res.id) {
                                 if let Some(range) = state.cursor.char_range() {
+                                    // Update persisted range only when NOT right-clicking,
+                                    // to "lock" the selection when the context menu is about to open.
+                                    if !ui.input(|i| {
+                                        i.pointer.secondary_down() || i.pointer.secondary_clicked()
+                                    }) {
+                                        if res.has_focus() {
+                                            tab.cursor_range =
+                                                Some((range.primary.index, range.secondary.index));
+                                        }
+                                    } else {
+                                        // If right-clicking, and we have a saved selection, force it back
+                                        // into the TextEdit state to prevent it from disappearing.
+                                        if let Some((p, s)) = tab.cursor_range {
+                                            if p != s {
+                                                state.cursor.set_char_range(Some(
+                                                    egui::text::CCursorRange::two(
+                                                        egui::text::CCursor::new(p),
+                                                        egui::text::CCursor::new(s),
+                                                    ),
+                                                ));
+                                                egui::TextEdit::store_state(
+                                                    ui.ctx(),
+                                                    res.id,
+                                                    state.clone(),
+                                                );
+                                            }
+                                        }
+                                    }
+
                                     let idx = range.primary.index;
                                     let text = &tab.content;
                                     let mut line = 1;
@@ -567,6 +709,186 @@ impl eframe::App for NotosApp {
                                     new_cursor_pos = Some((line, col));
                                 }
                             }
+
+                            // Context Menu
+                            res.context_menu(|ui| {
+                                // Ensure the TextEdit keeps its selection state while the menu is open
+                                let id = egui::Id::new("editor").with(tab.id);
+                                if let (Some(mut state), Some((p, s))) =
+                                    (egui::TextEdit::load_state(ui.ctx(), id), tab.cursor_range)
+                                {
+                                    if p != s {
+                                        state.cursor.set_char_range(Some(
+                                            egui::text::CCursorRange::two(
+                                                egui::text::CCursor::new(p),
+                                                egui::text::CCursor::new(s),
+                                            ),
+                                        ));
+                                        egui::TextEdit::store_state(ui.ctx(), id, state);
+                                    }
+                                }
+
+                                if ui.button("Undo").clicked() {
+                                    tab.undo();
+                                    ui.close_menu();
+                                }
+                                if ui.button("Redo").clicked() {
+                                    tab.redo();
+                                    ui.close_menu();
+                                }
+                                ui.separator();
+
+                                if ui.button("Cut").clicked() {
+                                    let id = egui::Id::new("editor").with(tab.id);
+                                    if let Some(state) = egui::TextEdit::load_state(ui.ctx(), id) {
+                                        // Use either the current state range or the persisted tab range
+                                        let range = state
+                                            .cursor
+                                            .char_range()
+                                            .filter(|r| r.primary != r.secondary)
+                                            .unwrap_or_else(|| {
+                                                let (p, s) = tab.cursor_range.unwrap_or((0, 0));
+                                                egui::text::CCursorRange::two(
+                                                    egui::text::CCursor::new(p),
+                                                    egui::text::CCursor::new(s),
+                                                )
+                                            });
+
+                                        if range.primary != range.secondary {
+                                            let (start, end) = (
+                                                range.primary.index.min(range.secondary.index),
+                                                range.primary.index.max(range.secondary.index),
+                                            );
+                                            if end <= tab.content.len() {
+                                                let selected_text = &tab.content[start..end];
+                                                if let Ok(mut clipboard) = arboard::Clipboard::new()
+                                                {
+                                                    let _ = clipboard
+                                                        .set_text(selected_text.to_string());
+                                                }
+                                                tab.push_undo(tab.content.clone());
+                                                tab.content.replace_range(start..end, "");
+                                                tab.is_dirty = true;
+
+                                                let mut new_state = state.clone();
+                                                new_state.cursor.set_char_range(Some(
+                                                    egui::text::CCursorRange::one(
+                                                        egui::text::CCursor::new(start),
+                                                    ),
+                                                ));
+                                                egui::TextEdit::store_state(
+                                                    ui.ctx(),
+                                                    id,
+                                                    new_state,
+                                                );
+                                                tab.cursor_range = Some((start, start));
+                                            }
+                                        }
+                                    }
+                                    ui.close_menu();
+                                }
+
+                                if ui.button("Copy").clicked() {
+                                    let id = egui::Id::new("editor").with(tab.id);
+                                    if let Some(state) = egui::TextEdit::load_state(ui.ctx(), id) {
+                                        let range = state
+                                            .cursor
+                                            .char_range()
+                                            .filter(|r| r.primary != r.secondary)
+                                            .unwrap_or_else(|| {
+                                                let (p, s) = tab.cursor_range.unwrap_or((0, 0));
+                                                egui::text::CCursorRange::two(
+                                                    egui::text::CCursor::new(p),
+                                                    egui::text::CCursor::new(s),
+                                                )
+                                            });
+
+                                        if range.primary != range.secondary {
+                                            let (start, end) = (
+                                                range.primary.index.min(range.secondary.index),
+                                                range.primary.index.max(range.secondary.index),
+                                            );
+                                            if end <= tab.content.len() {
+                                                let selected_text = &tab.content[start..end];
+                                                if let Ok(mut clipboard) = arboard::Clipboard::new()
+                                                {
+                                                    let _ = clipboard
+                                                        .set_text(selected_text.to_string());
+                                                }
+                                            }
+                                        }
+                                    }
+                                    ui.close_menu();
+                                }
+
+                                if ui.button("Paste").clicked() {
+                                    if let Ok(mut clipboard) = arboard::Clipboard::new() {
+                                        if let Ok(text) = clipboard.get_text() {
+                                            let id = egui::Id::new("editor").with(tab.id);
+                                            let mut state =
+                                                egui::TextEdit::load_state(ui.ctx(), id)
+                                                    .unwrap_or_default();
+
+                                            let range =
+                                                state.cursor.char_range().unwrap_or_else(|| {
+                                                    let (p, s) = tab.cursor_range.unwrap_or((
+                                                        tab.content.len(),
+                                                        tab.content.len(),
+                                                    ));
+                                                    egui::text::CCursorRange::two(
+                                                        egui::text::CCursor::new(p),
+                                                        egui::text::CCursor::new(s),
+                                                    )
+                                                });
+
+                                            let (start, end) = (
+                                                range.primary.index.min(range.secondary.index),
+                                                range.primary.index.max(range.secondary.index),
+                                            );
+
+                                            tab.push_undo(tab.content.clone());
+                                            if start != end {
+                                                if end <= tab.content.len() {
+                                                    tab.content.replace_range(start..end, &text);
+                                                }
+                                            } else if start <= tab.content.len() {
+                                                tab.content.insert_str(start, &text);
+                                            }
+                                            tab.is_dirty = true;
+
+                                            let new_cursor_idx = start + text.len();
+                                            state.cursor.set_char_range(Some(
+                                                egui::text::CCursorRange::one(
+                                                    egui::text::CCursor::new(new_cursor_idx),
+                                                ),
+                                            ));
+                                            egui::TextEdit::store_state(ui.ctx(), id, state);
+                                            tab.cursor_range =
+                                                Some((new_cursor_idx, new_cursor_idx));
+                                        }
+                                    }
+                                    ui.close_menu();
+                                }
+
+                                ui.separator();
+
+                                if ui.button("Select All").clicked() {
+                                    let id = egui::Id::new("editor").with(tab.id);
+                                    let mut state = egui::TextEdit::load_state(ui.ctx(), id)
+                                        .unwrap_or_default();
+                                    let len = tab.content.len();
+                                    state.cursor.set_char_range(Some(
+                                        egui::text::CCursorRange::two(
+                                            egui::text::CCursor::new(0),
+                                            egui::text::CCursor::new(len),
+                                        ),
+                                    ));
+                                    egui::TextEdit::store_state(ui.ctx(), id, state);
+                                    tab.cursor_range = Some((0, len));
+                                    ui.close_menu();
+                                }
+                            });
+
                             response = Some(res);
                         });
 
