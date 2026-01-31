@@ -38,10 +38,8 @@ pub struct NotosApp {
 
 impl NotosApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        // Customize fonts/style here to match Notepad
+        // Initial setup
         setup_custom_fonts(&cc.egui_ctx);
-        setup_custom_fonts(&cc.egui_ctx);
-        setup_custom_style(&cc.egui_ctx, false);
 
         let mut app = Self {
             tabs: vec![EditorTab::default()],
@@ -103,8 +101,13 @@ impl NotosApp {
             for tab in &mut app.tabs {
                 tab.scroll_to_cursor = true;
             }
-        } else if let Some(first) = app.tabs.first() {
-            app.active_tab_id = Some(first.id);
+        } else {
+            // Default look
+            setup_custom_style(&cc.egui_ctx, app.dark_mode);
+
+            if let Some(first) = app.tabs.first() {
+                app.active_tab_id = Some(first.id);
+            }
         }
 
         // Load plugins here
@@ -395,9 +398,11 @@ impl NotosApp {
         }
     }
 }
-
 impl eframe::App for NotosApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // ALWAYS ensure visuals are synced with our state
+        setup_custom_style(ctx, self.dark_mode);
+
         // Handle Window Close
         if ctx.input(|i| i.viewport().close_requested()) {
             match self.save_session() {
@@ -474,489 +479,524 @@ impl eframe::App for NotosApp {
         self.close_confirmation
             .show(ctx, &mut self.tabs, &mut self.active_tab_id, save_fn);
 
-        // Top Panel: Menu and Tabs
-        egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
-            if let Some(action) = crate::ui::menu_bar(
-                ui,
-                &mut self.plugin_manager,
-                &mut self.word_wrap,
-                &mut self.show_line_numbers,
-                &mut self.dark_mode,
-                &self.editor_font_family,
-                &self.custom_fonts,
-            ) {
-                self.handle_menu_action(action, ctx);
-            }
+        // Determine background colors
+        let panel_bg = if self.dark_mode {
+            egui::Color32::from_gray(38)
+        } else {
+            egui::Color32::WHITE
+        };
 
-            ui.add_space(4.0);
-            if let Some(action) = crate::ui::tab_bar(ui, &self.tabs, self.active_tab_id) {
-                match action {
-                    crate::ui::TabAction::New => {
-                        let tab = EditorTab::default();
-                        self.active_tab_id = Some(tab.id);
-                        self.tabs.push(tab);
-                    }
-                    crate::ui::TabAction::Select(id) => {
-                        self.active_tab_id = Some(id);
-                    }
-                    crate::ui::TabAction::Close(id) => {
-                        self.close_tab(id);
-                    }
-                    crate::ui::TabAction::CloseOthers(id) => {
-                        let ids_to_close: Vec<_> = self
-                            .tabs
-                            .iter()
-                            .filter(|t| t.id != id)
-                            .map(|t| t.id)
-                            .collect();
-                        for close_id in ids_to_close {
-                            self.close_tab(close_id);
+        // Top Panel: Menu and Tabs
+        egui::TopBottomPanel::top("top_panel")
+            .frame(egui::Frame::default().fill(panel_bg).inner_margin(8.0))
+            .show(ctx, |ui| {
+                if let Some(action) = crate::ui::menu_bar(
+                    ui,
+                    &mut self.plugin_manager,
+                    &mut self.word_wrap,
+                    &mut self.show_line_numbers,
+                    &mut self.dark_mode,
+                    &self.editor_font_family,
+                    &self.custom_fonts,
+                ) {
+                    self.handle_menu_action(action, ctx);
+                }
+
+                ui.add_space(4.0);
+                if let Some(action) = crate::ui::tab_bar(ui, &self.tabs, self.active_tab_id) {
+                    match action {
+                        crate::ui::TabAction::New => {
+                            let tab = EditorTab::default();
+                            self.active_tab_id = Some(tab.id);
+                            self.tabs.push(tab);
+                        }
+                        crate::ui::TabAction::Select(id) => {
+                            self.active_tab_id = Some(id);
+                        }
+                        crate::ui::TabAction::Close(id) => {
+                            self.close_tab(id);
+                        }
+                        crate::ui::TabAction::CloseOthers(id) => {
+                            let ids_to_close: Vec<_> = self
+                                .tabs
+                                .iter()
+                                .filter(|t| t.id != id)
+                                .map(|t| t.id)
+                                .collect();
+                            for close_id in ids_to_close {
+                                self.close_tab(close_id);
+                            }
                         }
                     }
                 }
-            }
-        });
+            });
 
         // Bottom Panel: Status Bar
-        egui::TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
-            if let Some(action) = crate::ui::status_bar(
-                ui,
-                &self.tabs,
-                self.active_tab_id,
-                self.current_cursor_pos,
-                self.editor_font_size,
-            ) {
-                match action {
-                    crate::ui::StatusBarAction::SwitchTab(id) => self.active_tab_id = Some(id),
-                    crate::ui::StatusBarAction::CloseTab(id) => self.close_tab(id),
-                    crate::ui::StatusBarAction::SetEncoding(id, enc) => {
-                        if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == id) {
-                            tab.encoding = enc;
-                            tab.is_dirty = true;
+        egui::TopBottomPanel::bottom("bottom_panel")
+            .frame(
+                egui::Frame::default()
+                    .fill(panel_bg)
+                    .inner_margin(egui::Margin::symmetric(8.0, 4.0)),
+            )
+            .show(ctx, |ui| {
+                if let Some(action) = crate::ui::status_bar(
+                    ui,
+                    &self.tabs,
+                    self.active_tab_id,
+                    self.current_cursor_pos,
+                    self.editor_font_size,
+                ) {
+                    match action {
+                        crate::ui::StatusBarAction::SwitchTab(id) => self.active_tab_id = Some(id),
+                        crate::ui::StatusBarAction::CloseTab(id) => self.close_tab(id),
+                        crate::ui::StatusBarAction::SetEncoding(id, enc) => {
+                            if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == id) {
+                                tab.encoding = enc;
+                                tab.is_dirty = true;
+                            }
                         }
-                    }
-                    crate::ui::StatusBarAction::SetLineEnding(id, le) => {
-                        if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == id) {
-                            tab.line_ending = le;
-                            tab.is_dirty = true;
+                        crate::ui::StatusBarAction::SetLineEnding(id, le) => {
+                            if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == id) {
+                                tab.line_ending = le;
+                                tab.is_dirty = true;
+                            }
                         }
                     }
                 }
-            }
-        });
+            });
 
         // Central Panel: Editor
-        egui::CentralPanel::default().show(ctx, |ui| {
-            let idx = self
-                .tabs
-                .iter()
-                .position(|t| Some(t.id) == self.active_tab_id)
-                .unwrap_or(0);
-            if let Some(tab) = self.tabs.get_mut(idx) {
-                let mut content_changed = false;
-                let previous_content = tab.content.clone();
+        egui::CentralPanel::default()
+            .frame(egui::Frame::default().fill(if self.dark_mode {
+                egui::Color32::from_gray(28)
+            } else {
+                egui::Color32::WHITE
+            }))
+            .show(ctx, |ui| {
+                let idx = self
+                    .tabs
+                    .iter()
+                    .position(|t| Some(t.id) == self.active_tab_id)
+                    .unwrap_or(0);
+                if let Some(tab) = self.tabs.get_mut(idx) {
+                    let mut content_changed = false;
+                    let previous_content = tab.content.clone();
 
-                let mut new_cursor_pos = None;
-                let mut tab_changed_idx = None;
+                    let mut new_cursor_pos = None;
+                    let mut tab_changed_idx = None;
 
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    let margin = 4.0;
-                    let family = if self.editor_font_family == "Monospace" {
-                        egui::FontFamily::Monospace
-                    } else if self.editor_font_family == "Proportional" {
-                        egui::FontFamily::Proportional
-                    } else {
-                        egui::FontFamily::Name(self.editor_font_family.clone().into())
-                    };
-                    let font_id = egui::FontId::new(self.editor_font_size, family);
-
-                    let line_number_width = if self.show_line_numbers {
-                        let line_count = tab.content.lines().count().max(1);
-                        let line_count = if tab.content.ends_with('\n') {
-                            line_count + 1
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        let margin = 4.0;
+                        let family = if self.editor_font_family == "Monospace" {
+                            egui::FontFamily::Monospace
+                        } else if self.editor_font_family == "Proportional" {
+                            egui::FontFamily::Proportional
                         } else {
-                            line_count
+                            egui::FontFamily::Name(self.editor_font_family.clone().into())
                         };
-                        let num_digits = line_count.to_string().len().max(2);
-                        (num_digits as f32 * self.editor_font_size * 0.6) + 12.0
-                    } else {
-                        0.0
-                    };
+                        let font_id = egui::FontId::new(self.editor_font_size, family);
 
-                    let available_height = ui.available_height();
-
-                    let editor_bg = if self.dark_mode {
-                        egui::Color32::from_gray(30)
-                    } else {
-                        egui::Color32::WHITE
-                    };
-
-                    let mut response = None;
-                    let mut galley_to_draw = None;
-
-                    ui.horizontal(|ui| {
-                        if self.show_line_numbers {
-                            ui.add_space(line_number_width + 8.0);
-                        }
-
-                        let mut layouter = |ui: &egui::Ui, string: &str, wrap_width: f32| {
-                            let layout_job = egui::text::LayoutJob::simple(
-                                string.to_string(),
-                                font_id.clone(),
-                                ui.visuals().widgets.noninteractive.text_color(),
-                                if self.word_wrap {
-                                    wrap_width
-                                } else {
-                                    f32::INFINITY
-                                },
-                            );
-                            let galley = ui.fonts(|f| f.layout_job(layout_job));
-                            galley_to_draw = Some(galley.clone());
-                            galley
+                        let line_number_width = if self.show_line_numbers {
+                            let line_count = tab.content.lines().count().max(1);
+                            let line_count = if tab.content.ends_with('\n') {
+                                line_count + 1
+                            } else {
+                                line_count
+                            };
+                            let num_digits = line_count.to_string().len().max(2);
+                            (num_digits as f32 * self.editor_font_size * 0.6) + 12.0
+                        } else {
+                            0.0
                         };
 
-                        egui::Frame::none().fill(editor_bg).show(ui, |ui| {
-                            let res = ui.add_sized(
-                                [ui.available_width(), available_height],
-                                egui::TextEdit::multiline(&mut tab.content)
-                                    .id(egui::Id::new("editor").with(tab.id))
-                                    .font(font_id.clone())
-                                    .frame(false)
-                                    .code_editor()
-                                    .lock_focus(true)
-                                    .margin(egui::Margin::same(margin))
-                                    .layouter(&mut layouter)
-                                    .desired_width(if self.word_wrap {
-                                        ui.available_width()
+                        let available_height = ui.available_height();
+
+                        let editor_bg = if self.dark_mode {
+                            egui::Color32::from_gray(28)
+                        } else {
+                            egui::Color32::WHITE
+                        };
+
+                        let mut response = None;
+                        let mut galley_to_draw = None;
+
+                        ui.horizontal(|ui| {
+                            if self.show_line_numbers {
+                                ui.add_space(line_number_width + 8.0);
+                            }
+
+                            let mut layouter = |ui: &egui::Ui, string: &str, wrap_width: f32| {
+                                let layout_job = egui::text::LayoutJob::simple(
+                                    string.to_string(),
+                                    font_id.clone(),
+                                    ui.visuals().widgets.noninteractive.text_color(),
+                                    if self.word_wrap {
+                                        wrap_width
                                     } else {
                                         f32::INFINITY
-                                    }),
-                            );
+                                    },
+                                );
+                                let galley = ui.fonts(|f| f.layout_job(layout_job));
+                                galley_to_draw = Some(galley.clone());
+                                galley
+                            };
 
-                            if tab.scroll_to_cursor {
-                                res.request_focus();
-                                // Restore cursor position
-                                let id = egui::Id::new("editor").with(tab.id);
-                                let mut state =
-                                    egui::TextEdit::load_state(ui.ctx(), id).unwrap_or_default();
-                                if let Some((p, s)) = tab.cursor_range {
-                                    state.cursor.set_char_range(Some(
-                                        egui::text::CCursorRange::two(
-                                            egui::text::CCursor::new(p),
-                                            egui::text::CCursor::new(s),
-                                        ),
-                                    ));
-                                }
-                                egui::TextEdit::store_state(ui.ctx(), id, state);
-
-                                tab.scroll_to_cursor = false;
-                            }
-
-                            if res.changed() {
-                                content_changed = true;
-                                tab.is_dirty = true;
-                                tab_changed_idx = Some(idx);
-                            }
-
-                            if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), res.id) {
-                                if let Some(range) = state.cursor.char_range() {
-                                    // Update persisted range only when NOT right-clicking,
-                                    // to "lock" the selection when the context menu is about to open.
-                                    if !ui.input(|i| {
-                                        i.pointer.secondary_down() || i.pointer.secondary_clicked()
-                                    }) {
-                                        if res.has_focus() {
-                                            tab.cursor_range =
-                                                Some((range.primary.index, range.secondary.index));
-                                        }
-                                    } else {
-                                        // If right-clicking, and we have a saved selection, force it back
-                                        // into the TextEdit state to prevent it from disappearing.
-                                        if let Some((p, s)) = tab.cursor_range {
-                                            if p != s {
-                                                state.cursor.set_char_range(Some(
-                                                    egui::text::CCursorRange::two(
-                                                        egui::text::CCursor::new(p),
-                                                        egui::text::CCursor::new(s),
-                                                    ),
-                                                ));
-                                                egui::TextEdit::store_state(
-                                                    ui.ctx(),
-                                                    res.id,
-                                                    state.clone(),
-                                                );
-                                            }
-                                        }
-                                    }
-
-                                    let idx = range.primary.index;
-                                    let text = &tab.content;
-                                    let mut line = 1;
-                                    let mut col = 1;
-                                    for (i, c) in text.char_indices() {
-                                        if i >= idx {
-                                            break;
-                                        }
-                                        if c == '\n' {
-                                            line += 1;
-                                            col = 1;
+                            egui::Frame::none().fill(editor_bg).show(ui, |ui| {
+                                let res = ui.add_sized(
+                                    [ui.available_width(), available_height],
+                                    egui::TextEdit::multiline(&mut tab.content)
+                                        .id(egui::Id::new("editor").with(tab.id))
+                                        .font(font_id.clone())
+                                        .frame(false)
+                                        .code_editor()
+                                        .lock_focus(true)
+                                        .margin(egui::Margin::same(margin))
+                                        .layouter(&mut layouter)
+                                        .desired_width(if self.word_wrap {
+                                            ui.available_width()
                                         } else {
-                                            col += 1;
-                                        }
-                                    }
-                                    new_cursor_pos = Some((line, col));
-                                }
-                            }
+                                            f32::INFINITY
+                                        }),
+                                );
 
-                            // Context Menu
-                            res.context_menu(|ui| {
-                                // Ensure the TextEdit keeps its selection state while the menu is open
-                                let id = egui::Id::new("editor").with(tab.id);
-                                if let (Some(mut state), Some((p, s))) =
-                                    (egui::TextEdit::load_state(ui.ctx(), id), tab.cursor_range)
-                                {
-                                    if p != s {
+                                if tab.scroll_to_cursor {
+                                    res.request_focus();
+                                    // Restore cursor position
+                                    let id = egui::Id::new("editor").with(tab.id);
+                                    let mut state = egui::TextEdit::load_state(ui.ctx(), id)
+                                        .unwrap_or_default();
+                                    if let Some((p, s)) = tab.cursor_range {
                                         state.cursor.set_char_range(Some(
                                             egui::text::CCursorRange::two(
                                                 egui::text::CCursor::new(p),
                                                 egui::text::CCursor::new(s),
                                             ),
                                         ));
-                                        egui::TextEdit::store_state(ui.ctx(), id, state);
                                     }
+                                    egui::TextEdit::store_state(ui.ctx(), id, state);
+
+                                    tab.scroll_to_cursor = false;
                                 }
 
-                                if ui.button("Undo").clicked() {
-                                    tab.undo();
-                                    ui.close_menu();
+                                if res.changed() {
+                                    content_changed = true;
+                                    tab.is_dirty = true;
+                                    tab_changed_idx = Some(idx);
                                 }
-                                if ui.button("Redo").clicked() {
-                                    tab.redo();
-                                    ui.close_menu();
-                                }
-                                ui.separator();
 
-                                if ui.button("Cut").clicked() {
-                                    let id = egui::Id::new("editor").with(tab.id);
-                                    if let Some(state) = egui::TextEdit::load_state(ui.ctx(), id) {
-                                        // Use either the current state range or the persisted tab range
-                                        let range = state
-                                            .cursor
-                                            .char_range()
-                                            .filter(|r| r.primary != r.secondary)
-                                            .unwrap_or_else(|| {
-                                                let (p, s) = tab.cursor_range.unwrap_or((0, 0));
-                                                egui::text::CCursorRange::two(
-                                                    egui::text::CCursor::new(p),
-                                                    egui::text::CCursor::new(s),
-                                                )
-                                            });
-
-                                        if range.primary != range.secondary {
-                                            let (start, end) = (
-                                                range.primary.index.min(range.secondary.index),
-                                                range.primary.index.max(range.secondary.index),
-                                            );
-                                            if end <= tab.content.len() {
-                                                let selected_text = &tab.content[start..end];
-                                                if let Ok(mut clipboard) = arboard::Clipboard::new()
-                                                {
-                                                    let _ = clipboard
-                                                        .set_text(selected_text.to_string());
-                                                }
-                                                tab.push_undo(tab.content.clone());
-                                                tab.content.replace_range(start..end, "");
-                                                tab.is_dirty = true;
-
-                                                let mut new_state = state.clone();
-                                                new_state.cursor.set_char_range(Some(
-                                                    egui::text::CCursorRange::one(
-                                                        egui::text::CCursor::new(start),
-                                                    ),
+                                if let Some(mut state) =
+                                    egui::TextEdit::load_state(ui.ctx(), res.id)
+                                {
+                                    if let Some(range) = state.cursor.char_range() {
+                                        // Update persisted range only when NOT right-clicking,
+                                        // to "lock" the selection when the context menu is about to open.
+                                        if !ui.input(|i| {
+                                            i.pointer.secondary_down()
+                                                || i.pointer.secondary_clicked()
+                                        }) {
+                                            if res.has_focus() {
+                                                tab.cursor_range = Some((
+                                                    range.primary.index,
+                                                    range.secondary.index,
                                                 ));
-                                                egui::TextEdit::store_state(
-                                                    ui.ctx(),
-                                                    id,
-                                                    new_state,
-                                                );
-                                                tab.cursor_range = Some((start, start));
                                             }
-                                        }
-                                    }
-                                    ui.close_menu();
-                                }
-
-                                if ui.button("Copy").clicked() {
-                                    let id = egui::Id::new("editor").with(tab.id);
-                                    if let Some(state) = egui::TextEdit::load_state(ui.ctx(), id) {
-                                        let range = state
-                                            .cursor
-                                            .char_range()
-                                            .filter(|r| r.primary != r.secondary)
-                                            .unwrap_or_else(|| {
-                                                let (p, s) = tab.cursor_range.unwrap_or((0, 0));
-                                                egui::text::CCursorRange::two(
-                                                    egui::text::CCursor::new(p),
-                                                    egui::text::CCursor::new(s),
-                                                )
-                                            });
-
-                                        if range.primary != range.secondary {
-                                            let (start, end) = (
-                                                range.primary.index.min(range.secondary.index),
-                                                range.primary.index.max(range.secondary.index),
-                                            );
-                                            if end <= tab.content.len() {
-                                                let selected_text = &tab.content[start..end];
-                                                if let Ok(mut clipboard) = arboard::Clipboard::new()
-                                                {
-                                                    let _ = clipboard
-                                                        .set_text(selected_text.to_string());
+                                        } else {
+                                            // If right-clicking, and we have a saved selection, force it back
+                                            // into the TextEdit state to prevent it from disappearing.
+                                            if let Some((p, s)) = tab.cursor_range {
+                                                if p != s {
+                                                    state.cursor.set_char_range(Some(
+                                                        egui::text::CCursorRange::two(
+                                                            egui::text::CCursor::new(p),
+                                                            egui::text::CCursor::new(s),
+                                                        ),
+                                                    ));
+                                                    egui::TextEdit::store_state(
+                                                        ui.ctx(),
+                                                        res.id,
+                                                        state.clone(),
+                                                    );
                                                 }
                                             }
                                         }
+
+                                        let idx = range.primary.index;
+                                        let text = &tab.content;
+                                        let mut line = 1;
+                                        let mut col = 1;
+                                        for (i, c) in text.char_indices() {
+                                            if i >= idx {
+                                                break;
+                                            }
+                                            if c == '\n' {
+                                                line += 1;
+                                                col = 1;
+                                            } else {
+                                                col += 1;
+                                            }
+                                        }
+                                        new_cursor_pos = Some((line, col));
                                     }
-                                    ui.close_menu();
                                 }
 
-                                if ui.button("Paste").clicked() {
-                                    if let Ok(mut clipboard) = arboard::Clipboard::new() {
-                                        if let Ok(text) = clipboard.get_text() {
-                                            let id = egui::Id::new("editor").with(tab.id);
-                                            let mut state =
-                                                egui::TextEdit::load_state(ui.ctx(), id)
-                                                    .unwrap_or_default();
+                                // Context Menu
+                                res.context_menu(|ui| {
+                                    // Ensure the TextEdit keeps its selection state while the menu is open
+                                    let id = egui::Id::new("editor").with(tab.id);
+                                    if let (Some(mut state), Some((p, s))) =
+                                        (egui::TextEdit::load_state(ui.ctx(), id), tab.cursor_range)
+                                    {
+                                        if p != s {
+                                            state.cursor.set_char_range(Some(
+                                                egui::text::CCursorRange::two(
+                                                    egui::text::CCursor::new(p),
+                                                    egui::text::CCursor::new(s),
+                                                ),
+                                            ));
+                                            egui::TextEdit::store_state(ui.ctx(), id, state);
+                                        }
+                                    }
 
-                                            let range =
-                                                state.cursor.char_range().unwrap_or_else(|| {
-                                                    let (p, s) = tab.cursor_range.unwrap_or((
-                                                        tab.content.len(),
-                                                        tab.content.len(),
-                                                    ));
+                                    if ui.button("Undo").clicked() {
+                                        tab.undo();
+                                        ui.close_menu();
+                                    }
+                                    if ui.button("Redo").clicked() {
+                                        tab.redo();
+                                        ui.close_menu();
+                                    }
+                                    ui.separator();
+
+                                    if ui.button("Cut").clicked() {
+                                        let id = egui::Id::new("editor").with(tab.id);
+                                        if let Some(state) =
+                                            egui::TextEdit::load_state(ui.ctx(), id)
+                                        {
+                                            // Use either the current state range or the persisted tab range
+                                            let range = state
+                                                .cursor
+                                                .char_range()
+                                                .filter(|r| r.primary != r.secondary)
+                                                .unwrap_or_else(|| {
+                                                    let (p, s) = tab.cursor_range.unwrap_or((0, 0));
                                                     egui::text::CCursorRange::two(
                                                         egui::text::CCursor::new(p),
                                                         egui::text::CCursor::new(s),
                                                     )
                                                 });
 
-                                            let (start, end) = (
-                                                range.primary.index.min(range.secondary.index),
-                                                range.primary.index.max(range.secondary.index),
-                                            );
-
-                                            tab.push_undo(tab.content.clone());
-                                            if start != end {
+                                            if range.primary != range.secondary {
+                                                let (start, end) = (
+                                                    range.primary.index.min(range.secondary.index),
+                                                    range.primary.index.max(range.secondary.index),
+                                                );
                                                 if end <= tab.content.len() {
-                                                    tab.content.replace_range(start..end, &text);
+                                                    let selected_text = &tab.content[start..end];
+                                                    if let Ok(mut clipboard) =
+                                                        arboard::Clipboard::new()
+                                                    {
+                                                        let _ = clipboard
+                                                            .set_text(selected_text.to_string());
+                                                    }
+                                                    tab.push_undo(tab.content.clone());
+                                                    tab.content.replace_range(start..end, "");
+                                                    tab.is_dirty = true;
+
+                                                    let mut new_state = state.clone();
+                                                    new_state.cursor.set_char_range(Some(
+                                                        egui::text::CCursorRange::one(
+                                                            egui::text::CCursor::new(start),
+                                                        ),
+                                                    ));
+                                                    egui::TextEdit::store_state(
+                                                        ui.ctx(),
+                                                        id,
+                                                        new_state,
+                                                    );
+                                                    tab.cursor_range = Some((start, start));
                                                 }
-                                            } else if start <= tab.content.len() {
-                                                tab.content.insert_str(start, &text);
                                             }
-                                            tab.is_dirty = true;
-
-                                            let new_cursor_idx = start + text.len();
-                                            state.cursor.set_char_range(Some(
-                                                egui::text::CCursorRange::one(
-                                                    egui::text::CCursor::new(new_cursor_idx),
-                                                ),
-                                            ));
-                                            egui::TextEdit::store_state(ui.ctx(), id, state);
-                                            tab.cursor_range =
-                                                Some((new_cursor_idx, new_cursor_idx));
                                         }
+                                        ui.close_menu();
                                     }
-                                    ui.close_menu();
-                                }
 
-                                ui.separator();
+                                    if ui.button("Copy").clicked() {
+                                        let id = egui::Id::new("editor").with(tab.id);
+                                        if let Some(state) =
+                                            egui::TextEdit::load_state(ui.ctx(), id)
+                                        {
+                                            let range = state
+                                                .cursor
+                                                .char_range()
+                                                .filter(|r| r.primary != r.secondary)
+                                                .unwrap_or_else(|| {
+                                                    let (p, s) = tab.cursor_range.unwrap_or((0, 0));
+                                                    egui::text::CCursorRange::two(
+                                                        egui::text::CCursor::new(p),
+                                                        egui::text::CCursor::new(s),
+                                                    )
+                                                });
 
-                                if ui.button("Select All").clicked() {
-                                    let id = egui::Id::new("editor").with(tab.id);
-                                    let mut state = egui::TextEdit::load_state(ui.ctx(), id)
-                                        .unwrap_or_default();
-                                    let len = tab.content.len();
-                                    state.cursor.set_char_range(Some(
-                                        egui::text::CCursorRange::two(
-                                            egui::text::CCursor::new(0),
-                                            egui::text::CCursor::new(len),
-                                        ),
-                                    ));
-                                    egui::TextEdit::store_state(ui.ctx(), id, state);
-                                    tab.cursor_range = Some((0, len));
-                                    ui.close_menu();
-                                }
+                                            if range.primary != range.secondary {
+                                                let (start, end) = (
+                                                    range.primary.index.min(range.secondary.index),
+                                                    range.primary.index.max(range.secondary.index),
+                                                );
+                                                if end <= tab.content.len() {
+                                                    let selected_text = &tab.content[start..end];
+                                                    if let Ok(mut clipboard) =
+                                                        arboard::Clipboard::new()
+                                                    {
+                                                        let _ = clipboard
+                                                            .set_text(selected_text.to_string());
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        ui.close_menu();
+                                    }
+
+                                    if ui.button("Paste").clicked() {
+                                        if let Ok(mut clipboard) = arboard::Clipboard::new() {
+                                            if let Ok(text) = clipboard.get_text() {
+                                                let id = egui::Id::new("editor").with(tab.id);
+                                                let mut state =
+                                                    egui::TextEdit::load_state(ui.ctx(), id)
+                                                        .unwrap_or_default();
+
+                                                let range = state
+                                                    .cursor
+                                                    .char_range()
+                                                    .unwrap_or_else(|| {
+                                                        let (p, s) = tab.cursor_range.unwrap_or((
+                                                            tab.content.len(),
+                                                            tab.content.len(),
+                                                        ));
+                                                        egui::text::CCursorRange::two(
+                                                            egui::text::CCursor::new(p),
+                                                            egui::text::CCursor::new(s),
+                                                        )
+                                                    });
+
+                                                let (start, end) = (
+                                                    range.primary.index.min(range.secondary.index),
+                                                    range.primary.index.max(range.secondary.index),
+                                                );
+
+                                                tab.push_undo(tab.content.clone());
+                                                if start != end {
+                                                    if end <= tab.content.len() {
+                                                        tab.content
+                                                            .replace_range(start..end, &text);
+                                                    }
+                                                } else if start <= tab.content.len() {
+                                                    tab.content.insert_str(start, &text);
+                                                }
+                                                tab.is_dirty = true;
+
+                                                let new_cursor_idx = start + text.len();
+                                                state.cursor.set_char_range(Some(
+                                                    egui::text::CCursorRange::one(
+                                                        egui::text::CCursor::new(new_cursor_idx),
+                                                    ),
+                                                ));
+                                                egui::TextEdit::store_state(ui.ctx(), id, state);
+                                                tab.cursor_range =
+                                                    Some((new_cursor_idx, new_cursor_idx));
+                                            }
+                                        }
+                                        ui.close_menu();
+                                    }
+
+                                    ui.separator();
+
+                                    if ui.button("Select All").clicked() {
+                                        let id = egui::Id::new("editor").with(tab.id);
+                                        let mut state = egui::TextEdit::load_state(ui.ctx(), id)
+                                            .unwrap_or_default();
+                                        let len = tab.content.len();
+                                        state.cursor.set_char_range(Some(
+                                            egui::text::CCursorRange::two(
+                                                egui::text::CCursor::new(0),
+                                                egui::text::CCursor::new(len),
+                                            ),
+                                        ));
+                                        egui::TextEdit::store_state(ui.ctx(), id, state);
+                                        tab.cursor_range = Some((0, len));
+                                        ui.close_menu();
+                                    }
+                                });
+
+                                response = Some(res);
                             });
 
-                            response = Some(res);
-                        });
+                            // Line numbers rendering
+                            if self.show_line_numbers {
+                                if let (Some(res), Some(galley)) = (response, galley_to_draw) {
+                                    let painter = ui.painter();
+                                    let mut logical_line = 1;
+                                    let mut is_start_of_logical_line = true;
 
-                        // Line numbers rendering
-                        if self.show_line_numbers {
-                            if let (Some(res), Some(galley)) = (response, galley_to_draw) {
-                                let painter = ui.painter();
-                                let mut logical_line = 1;
-                                let mut is_start_of_logical_line = true;
+                                    let line_num_rect = egui::Rect::from_min_max(
+                                        egui::pos2(
+                                            res.rect.min.x - line_number_width - 8.0,
+                                            res.rect.min.y,
+                                        ),
+                                        egui::pos2(res.rect.min.x, res.rect.max.y),
+                                    );
+                                    painter.rect_filled(
+                                        line_num_rect,
+                                        0.0,
+                                        ui.visuals().widgets.noninteractive.bg_fill,
+                                    );
 
-                                let line_num_rect = egui::Rect::from_min_max(
-                                    egui::pos2(
-                                        res.rect.min.x - line_number_width - 8.0,
-                                        res.rect.min.y,
-                                    ),
-                                    egui::pos2(res.rect.min.x, res.rect.max.y),
-                                );
-                                painter.rect_filled(
-                                    line_num_rect,
-                                    0.0,
-                                    ui.visuals().widgets.noninteractive.bg_fill,
-                                );
+                                    painter.line_segment(
+                                        [
+                                            egui::pos2(res.rect.min.x - 2.0, res.rect.min.y),
+                                            egui::pos2(res.rect.min.x - 2.0, res.rect.max.y),
+                                        ],
+                                        ui.visuals().widgets.noninteractive.bg_stroke,
+                                    );
 
-                                painter.line_segment(
-                                    [
-                                        egui::pos2(res.rect.min.x - 2.0, res.rect.min.y),
-                                        egui::pos2(res.rect.min.x - 2.0, res.rect.max.y),
-                                    ],
-                                    ui.visuals().widgets.noninteractive.bg_stroke,
-                                );
-
-                                for row in &galley.rows {
-                                    if is_start_of_logical_line {
-                                        let pos = egui::pos2(
-                                            res.rect.min.x - 8.0,
-                                            res.rect.min.y + margin + row.rect.min.y,
-                                        );
-                                        painter.text(
-                                            pos,
-                                            egui::Align2::RIGHT_TOP,
-                                            logical_line.to_string(),
-                                            font_id.clone(),
-                                            ui.visuals().weak_text_color(),
-                                        );
-                                        logical_line += 1;
+                                    for row in &galley.rows {
+                                        if is_start_of_logical_line {
+                                            let pos = egui::pos2(
+                                                res.rect.min.x - 8.0,
+                                                res.rect.min.y + margin + row.rect.min.y,
+                                            );
+                                            painter.text(
+                                                pos,
+                                                egui::Align2::RIGHT_TOP,
+                                                logical_line.to_string(),
+                                                font_id.clone(),
+                                                ui.visuals().weak_text_color(),
+                                            );
+                                            logical_line += 1;
+                                        }
+                                        is_start_of_logical_line = row.ends_with_newline;
                                     }
-                                    is_start_of_logical_line = row.ends_with_newline;
                                 }
                             }
-                        }
+                        });
                     });
-                });
 
-                if let Some(pos) = new_cursor_pos {
-                    self.current_cursor_pos = pos;
-                }
+                    if let Some(pos) = new_cursor_pos {
+                        self.current_cursor_pos = pos;
+                    }
 
-                if content_changed {
-                    if let Some(idx) = tab_changed_idx {
-                        if let Some(tab) = self.tabs.get_mut(idx) {
-                            tab.push_undo(previous_content);
+                    if content_changed {
+                        if let Some(idx) = tab_changed_idx {
+                            if let Some(tab) = self.tabs.get_mut(idx) {
+                                tab.push_undo(previous_content);
+                            }
                         }
                     }
+                } else {
+                    ui.centered_and_justified(|ui| {
+                        ui.label("No open tabs. Press Ctrl+N to create a new one.");
+                    });
                 }
-            } else {
-                ui.centered_and_justified(|ui| {
-                    ui.label("No open tabs. Press Ctrl+N to create a new one.");
-                });
-            }
-        });
+            });
 
         self.plugin_manager.ui(ctx);
     }
@@ -983,33 +1023,52 @@ fn setup_custom_fonts(ctx: &egui::Context) {
 }
 
 fn setup_custom_style(ctx: &egui::Context, dark_mode: bool) {
-    if dark_mode {
-        ctx.set_visuals(egui::Visuals::dark());
-
-        let mut style = (*ctx.style()).clone();
-        // Lighter grey background for dark mode as requested
-        let dark_grey = egui::Color32::from_gray(40);
-        style.visuals.widgets.noninteractive.bg_fill = dark_grey;
-        style.visuals.window_fill = dark_grey;
-        style.visuals.panel_fill = dark_grey;
-        style.visuals.extreme_bg_color = egui::Color32::from_gray(55); // Even lighter for text area
-
-        ctx.set_style(style);
+    let mut visuals = if dark_mode {
+        egui::Visuals::dark()
     } else {
-        ctx.set_visuals(egui::Visuals::light());
+        egui::Visuals::light()
+    };
 
-        // Get the fresh light style to modify
-        let mut style = (*ctx.style()).clone();
+    if dark_mode {
+        // Deep dark background for the editor
+        let editor_bg = egui::Color32::from_gray(28);
+        // Slightly lighter for the panels
+        let panel_bg = egui::Color32::from_gray(38);
 
-        // Make it look clean and flat like Notepad
-        style.visuals.widgets.noninteractive.bg_fill = egui::Color32::WHITE;
-        style.visuals.window_fill = egui::Color32::WHITE;
-        style.visuals.panel_fill = egui::Color32::WHITE;
+        visuals.panel_fill = panel_bg;
+        visuals.window_fill = panel_bg;
+        visuals.extreme_bg_color = editor_bg;
 
-        // Selection color
-        style.visuals.selection.bg_fill = egui::Color32::from_rgb(0, 120, 215);
-        style.visuals.selection.stroke = egui::Stroke::new(1.0, egui::Color32::WHITE);
+        // Ensure buttons and non-interactive areas have correct background
+        visuals.widgets.noninteractive.bg_fill = panel_bg;
+        visuals.widgets.inactive.bg_fill = egui::Color32::from_gray(45);
+        visuals.widgets.hovered.bg_fill = egui::Color32::from_gray(55);
+        visuals.widgets.active.bg_fill = egui::Color32::from_gray(65);
 
-        ctx.set_style(style);
+        // Contrasty text colors
+        visuals.widgets.noninteractive.fg_stroke.color = egui::Color32::from_gray(220);
+        visuals.widgets.inactive.fg_stroke.color = egui::Color32::from_gray(230);
+        visuals.widgets.hovered.fg_stroke.color = egui::Color32::WHITE;
+        visuals.widgets.active.fg_stroke.color = egui::Color32::WHITE;
+
+        visuals.window_shadow.color = egui::Color32::from_black_alpha(100);
+    } else {
+        visuals.widgets.noninteractive.bg_fill = egui::Color32::WHITE;
+        visuals.window_fill = egui::Color32::WHITE;
+        visuals.panel_fill = egui::Color32::WHITE;
+        visuals.extreme_bg_color = egui::Color32::WHITE;
+
+        visuals.selection.bg_fill = egui::Color32::from_rgb(0, 120, 215);
+        visuals.selection.stroke = egui::Stroke::new(1.0, egui::Color32::WHITE);
     }
+
+    ctx.set_visuals(visuals.clone());
+
+    // Update the whole style to ensure everything propagates
+    let mut style = (*ctx.style()).clone();
+    style.visuals = visuals;
+    // Add some padding to widgets for a more modern look
+    style.spacing.item_spacing = egui::vec2(8.0, 4.0);
+    style.spacing.window_margin = egui::Margin::same(8.0);
+    ctx.set_style(style);
 }
