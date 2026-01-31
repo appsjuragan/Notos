@@ -36,7 +36,7 @@ impl NotosPlugin for Base64Plugin {
     fn plugins_menu_ui(&mut self, ui: &mut egui::Ui, ed: &EditorContext) -> PluginAction {
         let mut action = PluginAction::None;
 
-        if ui.button("Base64 Encode").clicked() {
+        if ui.button("🔐 Base64 Encode").clicked() {
             if let Some((s, e)) = ed.selection {
                 let (start, end) = (s.min(e), s.max(e));
                 if start != end {
@@ -52,7 +52,7 @@ impl NotosPlugin for Base64Plugin {
             ui.close_menu();
         }
 
-        if ui.button("Base64 Decode").clicked() {
+        if ui.button("🔓 Base64 Decode").clicked() {
             if let Some((s, e)) = ed.selection {
                 let (start, end) = (s.min(e), s.max(e));
                 if start != end {
@@ -84,14 +84,14 @@ impl NotosPlugin for Base64Plugin {
         if let Some((s, e)) = ed.selection {
             let (start, end) = (s.min(e), s.max(e));
             if start != end {
-                if ui.button("Base64 Encode Selection").clicked() {
+                if ui.button("🔐 Base64 Encode Selection").clicked() {
                     if let Some(selected_text) = ed.content.get(start..end) {
                         action = PluginAction::ReplaceSelection(self.encode(selected_text));
                     }
                     ui.close_menu();
                 }
 
-                if ui.button("Base64 Decode Selection").clicked() {
+                if ui.button("🔓 Base64 Decode Selection").clicked() {
                     if let Some(selected_text) = ed.content.get(start..end) {
                         if let Some(decoded) = self.decode(selected_text) {
                             action = PluginAction::ReplaceSelection(decoded);

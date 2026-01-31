@@ -21,8 +21,8 @@ impl NotosPlugin for AboutPlugin {
     }
 
     fn menu_ui(&mut self, ui: &mut egui::Ui, _ed: &EditorContext) -> PluginAction {
-        ui.menu_button("Help", |ui| {
-            if ui.button("About Notos").clicked() {
+        ui.menu_button("❓ Help", |ui| {
+            if ui.button("ℹ️ About Notos").clicked() {
                 self.open = true;
                 ui.close_menu();
             }

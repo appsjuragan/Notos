@@ -939,13 +939,13 @@ impl eframe::App for NotosApp {
 
                                 // Standard Edit actions
                                 ui.add_enabled_ui(can_undo, |ui| {
-                                    if ui.button("Undo").clicked() {
+                                    if ui.button("↩️ Undo").clicked() {
                                         deferred_action = DeferredAction::Undo;
                                         ui.close_menu();
                                     }
                                 });
                                 ui.add_enabled_ui(can_redo, |ui| {
-                                    if ui.button("Redo").clicked() {
+                                    if ui.button("↪️ Redo").clicked() {
                                         deferred_action = DeferredAction::Redo;
                                         ui.close_menu();
                                     }
@@ -953,22 +953,22 @@ impl eframe::App for NotosApp {
 
                                 ui.separator();
 
-                                if ui.button("Cut").clicked() {
+                                if ui.button("✂️ Cut").clicked() {
                                     deferred_action = DeferredAction::Cut;
                                     ui.close_menu();
                                 }
-                                if ui.button("Copy").clicked() {
+                                if ui.button("📄 Copy").clicked() {
                                     deferred_action = DeferredAction::Copy;
                                     ui.close_menu();
                                 }
-                                if ui.button("Paste").clicked() {
+                                if ui.button("📋 Paste").clicked() {
                                     deferred_action = DeferredAction::Paste;
                                     ui.close_menu();
                                 }
 
                                 ui.separator();
 
-                                if ui.button("Select All").clicked() {
+                                if ui.button("✅ Select All").clicked() {
                                     deferred_action = DeferredAction::SelectAll;
                                     ui.close_menu();
                                 }

@@ -34,7 +34,7 @@ impl NotosPlugin for JsonFormatPlugin {
     fn plugins_menu_ui(&mut self, ui: &mut egui::Ui, ed: &EditorContext) -> PluginAction {
         let mut action = PluginAction::None;
         
-        if ui.button("Format JSON").clicked() {
+        if ui.button("✨ Format JSON").clicked() {
             if let Some((s, e)) = ed.selection {
                 let (start, end) = (s.min(e), s.max(e));
                 if start != end {
