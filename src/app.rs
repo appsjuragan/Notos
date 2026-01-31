@@ -18,6 +18,8 @@ struct SessionState {
     editor_font_size: f32,
     editor_font_family: String,
     custom_fonts: std::collections::HashMap<String, Vec<u8>>,
+    #[serde(default)]
+    recent_files: Vec<std::path::PathBuf>,
 }
 
 pub struct NotosApp {
@@ -34,6 +36,7 @@ pub struct NotosApp {
     editor_font_size: f32,
     editor_font_family: String,
     custom_fonts: std::collections::HashMap<String, Vec<u8>>,
+    recent_files: Vec<std::path::PathBuf>,
 }
 
 impl NotosApp {
@@ -55,6 +58,7 @@ impl NotosApp {
             editor_font_family: "Monospace".to_string(),
             custom_fonts: std::collections::HashMap::new(),
             close_confirmation: CloseConfirmationDialog::default(),
+            recent_files: Vec::new(),
         };
 
         if let Some(session) = Self::load_session() {
@@ -66,6 +70,7 @@ impl NotosApp {
             app.editor_font_size = session.editor_font_size;
             app.editor_font_family = session.editor_font_family;
             app.custom_fonts = session.custom_fonts;
+            app.recent_files = session.recent_files;
 
             // Restore fonts in egui
             let mut fonts = egui::FontDefinitions::default();
@@ -127,6 +132,7 @@ impl NotosApp {
             editor_font_size: self.editor_font_size,
             editor_font_family: self.editor_font_family.clone(),
             custom_fonts: self.custom_fonts.clone(),
+            recent_files: self.recent_files.clone(),
         };
 
         let path = std::env::temp_dir().join("notos_session.json");
@@ -150,6 +156,16 @@ impl NotosApp {
         self.tabs
             .iter_mut()
             .find(|t| Some(t.id) == self.active_tab_id)
+    }
+
+    fn add_to_recent(&mut self, path: std::path::PathBuf) {
+        // Remove if already exists to move to top
+        if let Some(pos) = self.recent_files.iter().position(|p| p == &path) {
+            self.recent_files.remove(pos);
+        }
+        self.recent_files.insert(0, path);
+        // Limit to 8
+        self.recent_files.truncate(8);
     }
 
     fn get_editor_context(&self) -> notos_sdk::EditorContext<'_> {
@@ -208,10 +224,12 @@ impl NotosApp {
 
     fn open_file(&mut self) {
         if let Some(path) = FileDialog::new().pick_file() {
+            let path_clone = path.clone();
             match EditorTab::from_file(path) {
                 Ok(tab) => {
                     self.active_tab_id = Some(tab.id);
                     self.tabs.push(tab);
+                    self.add_to_recent(path_clone);
                 }
                 Err(e) => {
                     log::error!("Failed to open file: {}", e);
@@ -251,9 +269,11 @@ impl NotosApp {
                 .set_file_name("untitled.txt")
                 .save_file()
             {
-                tab.set_path(path);
+                tab.set_path(path.clone());
                 if let Err(e) = tab.save() {
                     log::error!("Failed to save file: {}", e);
+                } else {
+                    self.add_to_recent(path);
                 }
             }
         }
@@ -283,6 +303,19 @@ impl NotosApp {
                 self.tabs.push(tab);
             }
             MenuAction::Open => self.open_file(),
+            MenuAction::OpenRecent(path) => {
+                let path_clone = path.clone();
+                match EditorTab::from_file(path) {
+                    Ok(tab) => {
+                        self.active_tab_id = Some(tab.id);
+                        self.tabs.push(tab);
+                        self.add_to_recent(path_clone);
+                    }
+                    Err(e) => {
+                        log::error!("Failed to open recent file: {}", e);
+                    }
+                }
+            }
             MenuAction::Save => self.save_file(),
             MenuAction::SaveAs => self.save_file_as(),
             MenuAction::Exit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
@@ -566,6 +599,7 @@ impl eframe::App for NotosApp {
                     dark_mode,
                     &self.editor_font_family,
                     &self.custom_fonts,
+                    &self.recent_files,
                     &ed_ctx,
                 );
                 menu_action_to_run = m;
@@ -649,17 +683,22 @@ impl eframe::App for NotosApp {
                 egui::Color32::WHITE
             }))
             .show(ctx, |ui| {
-                let idx = self
-                    .tabs
+                let plugin_manager = &mut self.plugin_manager;
+                let tabs = &mut self.tabs;
+                let active_tab_id = self.active_tab_id;
+
+                let idx = tabs
                     .iter()
-                    .position(|t| Some(t.id) == self.active_tab_id)
+                    .position(|t| Some(t.id) == active_tab_id)
                     .unwrap_or(0);
-                if let Some(tab) = self.tabs.get_mut(idx) {
+
+                if let Some(tab) = tabs.get_mut(idx) {
                     let mut content_changed = false;
                     let previous_content = tab.content.clone();
 
                     let mut new_cursor_pos = None;
                     let mut tab_changed_idx = None;
+                    let mut plugin_action_to_run_context = notos_sdk::PluginAction::None;
 
                     egui::ScrollArea::vertical().show(ui, |ui| {
                         let margin = 4.0;
@@ -734,6 +773,16 @@ impl eframe::App for NotosApp {
                                             f32::INFINITY
                                         }),
                                 );
+
+                                // Add context menu
+                                let ed_ctx = notos_sdk::EditorContext {
+                                    content: &tab.content,
+                                    selection: tab.cursor_range,
+                                };
+                                res.context_menu(|ui| {
+                                    plugin_action_to_run_context =
+                                        plugin_manager.context_menu_ui(ui, &ed_ctx);
+                                });
 
                                 if tab.scroll_to_cursor {
                                     res.request_focus();
@@ -1055,6 +1104,8 @@ impl eframe::App for NotosApp {
                             }
                         });
                     });
+
+                    self.handle_plugin_action(plugin_action_to_run_context, ctx);
 
                     if let Some(pos) = new_cursor_pos {
                         self.current_cursor_pos = pos;

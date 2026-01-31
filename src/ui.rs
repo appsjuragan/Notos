@@ -31,6 +31,7 @@ pub enum MenuAction {
     ResetZoom,
     ChangeFont(String),
     LoadFont,
+    OpenRecent(std::path::PathBuf),
 }
 
 pub fn menu_bar(
@@ -41,6 +42,7 @@ pub fn menu_bar(
     dark_mode: &mut bool,
     editor_font_family: &str,
     custom_fonts: &std::collections::HashMap<String, Vec<u8>>,
+    recent_files: &[std::path::PathBuf],
     ed_ctx: &EditorContext,
 ) -> (Option<MenuAction>, PluginAction) {
     let mut action = None;
@@ -64,6 +66,23 @@ pub fn menu_bar(
                 action = Some(MenuAction::SaveAs);
                 ui.close_menu();
             }
+
+            if !recent_files.is_empty() {
+                ui.separator();
+                ui.menu_button("Recent Files", |ui| {
+                    for path in recent_files {
+                        let label = path
+                            .file_name()
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_else(|| path.to_string_lossy().to_string());
+                        if ui.button(label).on_hover_text(path.to_string_lossy()).clicked() {
+                            action = Some(MenuAction::OpenRecent(path.clone()));
+                            ui.close_menu();
+                        }
+                    }
+                });
+            }
+
             ui.separator();
             if ui.button("Exit").clicked() {
                 action = Some(MenuAction::Exit);

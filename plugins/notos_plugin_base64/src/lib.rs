@@ -74,6 +74,33 @@ impl NotosPlugin for Base64Plugin {
 
         action
     }
+
+    fn context_menu_ui(&mut self, ui: &mut egui::Ui, ed: &EditorContext) -> PluginAction {
+        let mut action = PluginAction::None;
+
+        // Only show in context menu if there's a selection
+        if let Some((start, end)) = ed.selection {
+            if start != end {
+                if ui.button("Base64 Encode Selection").clicked() {
+                    if let Some(selected_text) = ed.content.get(start..end) {
+                        action = PluginAction::ReplaceSelection(self.encode(selected_text));
+                    }
+                    ui.close_menu();
+                }
+
+                if ui.button("Base64 Decode Selection").clicked() {
+                    if let Some(selected_text) = ed.content.get(start..end) {
+                        if let Some(decoded) = self.decode(selected_text) {
+                            action = PluginAction::ReplaceSelection(decoded);
+                        }
+                    }
+                    ui.close_menu();
+                }
+            }
+        }
+
+        action
+    }
 }
 
 /// Dynamic library entry point for creation

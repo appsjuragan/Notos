@@ -177,4 +177,17 @@ impl PluginManager {
         }
         result
     }
+
+    pub fn context_menu_ui(&mut self, ui: &mut egui::Ui, ed: &EditorContext) -> PluginAction {
+        let mut result = PluginAction::None;
+        for p in &mut self.plugins {
+            unsafe {
+                let action = p.as_plugin_mut().context_menu_ui(ui, ed);
+                if action != PluginAction::None {
+                    result = action;
+                }
+            }
+        }
+        result
+    }
 }

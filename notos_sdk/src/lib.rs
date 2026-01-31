@@ -44,6 +44,11 @@ pub trait NotosPlugin: Any + Send + Sync {
         PluginAction::None
     }
 
+    /// Called to add items to the editor's right-click context menu.
+    fn context_menu_ui(&mut self, _ui: &mut egui::Ui, _ed: &EditorContext) -> PluginAction {
+        PluginAction::None
+    }
+
     /// Called when the application is shutting down.
     fn on_unload(&mut self) {}
 }
