@@ -1,37 +1,37 @@
 use egui::Context;
-use std::any::Any;
+use notos_sdk::{CreatePluginFn, DestroyPluginFn, NotosPlugin};
+use std::collections::HashSet;
+use std::fs;
+use std::path::PathBuf;
 
-/// Context passed to plugins when they are initialized or executed.
-#[allow(dead_code)]
-pub struct PluginContext<'a> {
-    pub ctx: &'a Context,
-    // We can add more access to the app state here later (e.g., current document)
+/// A loaded plugin instance.
+struct PluginInstance {
+    // This is a Box<Box<dyn NotosPlugin>>
+    raw_wrapper: *mut std::ffi::c_void,
+    destroyer: DestroyPluginFn,
 }
 
-/// The trait that all plugins must implement.
-pub trait NotosPlugin: Any + Send + Sync {
-    /// Unique identifier for the plugin.
-    fn id(&self) -> &str;
+impl PluginInstance {
+    /// Access the plugin trait object safely.
+    unsafe fn as_plugin_mut(&mut self) -> &mut dyn NotosPlugin {
+        let box_ptr = self.raw_wrapper as *mut Box<dyn NotosPlugin>;
+        &mut **box_ptr
+    }
+}
 
-    /// Display name of the plugin.
-    fn name(&self) -> &str;
-
-    /// Called when the plugin is loaded.
-    fn on_load(&mut self, _ctx: &Context) {}
-
-    /// Called every frame. Use this to show windows or panels.
-    fn ui(&mut self, _ctx: &egui::Context) {}
-
-    /// Called to extend the main menu.
-    fn menu_ui(&mut self, _ui: &mut egui::Ui) {}
-
-    /// Called when the application is shutting down.
-    fn on_unload(&mut self) {}
+impl Drop for PluginInstance {
+    fn drop(&mut self) {
+        log::debug!("Destroying plugin instance");
+        unsafe {
+            // Memory allocated in DLL must be freed in DLL
+            (self.destroyer)(self.raw_wrapper);
+        }
+    }
 }
 
 /// Manages the lifecycle of plugins.
 pub struct PluginManager {
-    plugins: Vec<Box<dyn NotosPlugin>>,
+    plugins: Vec<PluginInstance>,
 }
 
 impl PluginManager {
@@ -41,36 +41,119 @@ impl PluginManager {
         }
     }
 
-    pub fn register(&mut self, plugin: Box<dyn NotosPlugin>) {
-        log::info!(
-            "Registering plugin: {} (ID: {})",
-            plugin.name(),
-            plugin.id()
-        );
-        self.plugins.push(plugin);
+    /// Load all plugins from the "plugins" directory relative to executable.
+    pub fn load_plugins(&mut self) {
+        log::info!("Scanning for plugins...");
+
+        let mut loaded_filenames = HashSet::new();
+
+        // Find plugins directory
+        let exe_path = std::env::current_exe().unwrap_or_default();
+        let exe_dir = exe_path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."));
+        let plugins_dir = exe_dir.join("plugins");
+
+        if !plugins_dir.exists() {
+            log::info!("Plugins folder not found at {:?}", plugins_dir);
+            return;
+        }
+
+        if let Ok(entries) = fs::read_dir(plugins_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if let Some(ext) = path.extension() {
+                    let ext_str = ext.to_string_lossy().to_lowercase();
+                    if ext_str == "dll" || ext_str == "so" || ext_str == "dylib" {
+                        if let Some(filename) = path.file_name() {
+                            let filename_str = filename.to_string_lossy().to_string();
+                            if loaded_filenames.insert(filename_str) {
+                                unsafe {
+                                    self.load_plugin_from_file(&path);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        log::info!("Loaded {} plugins.", self.plugins.len());
+    }
+
+    unsafe fn load_plugin_from_file(&mut self, path: &PathBuf) {
+        log::info!("Loading plugin DLL: {:?}", path);
+
+        match libloading::Library::new(path) {
+            Ok(lib) => {
+                let create_func: libloading::Symbol<CreatePluginFn> =
+                    match lib.get(b"_create_plugin") {
+                        Ok(f) => f,
+                        Err(e) => {
+                            log::warn!("Missing _create_plugin in {:?}: {}", path, e);
+                            return;
+                        }
+                    };
+
+                let destroy_func: libloading::Symbol<DestroyPluginFn> =
+                    match lib.get(b"_destroy_plugin") {
+                        Ok(f) => f,
+                        Err(e) => {
+                            log::warn!("Missing _destroy_plugin in {:?}: {}", path, e);
+                            return;
+                        }
+                    };
+
+                let destroyer = *destroy_func;
+                let raw_wrapper = create_func();
+
+                self.plugins.push(PluginInstance {
+                    raw_wrapper,
+                    destroyer,
+                });
+
+                // LEAK the library handle.
+                // This ensures the DLL stays mapped in memory until the OS terminates the process.
+                // This is a standard workaround for Rust plugin crashes on exit (0xc0000005).
+                std::mem::forget(lib);
+
+                log::info!("Plugin successfully loaded and locked in memory.");
+            }
+            Err(e) => {
+                log::error!("Failed to load library {:?}: {}", path, e);
+            }
+        }
     }
 
     pub fn on_load(&mut self, ctx: &Context) {
-        for plugin in &mut self.plugins {
-            plugin.on_load(ctx);
+        for p in &mut self.plugins {
+            unsafe {
+                p.as_plugin_mut().on_load(ctx);
+            }
         }
     }
 
     pub fn on_unload(&mut self) {
-        for plugin in &mut self.plugins {
-            plugin.on_unload();
+        for p in &mut self.plugins {
+            unsafe {
+                p.as_plugin_mut().on_unload();
+            }
         }
     }
 
     pub fn ui(&mut self, ctx: &egui::Context) {
-        for plugin in &mut self.plugins {
-            plugin.ui(ctx);
+        for p in &mut self.plugins {
+            unsafe {
+                p.as_plugin_mut().ui(ctx);
+            }
         }
     }
 
     pub fn menu_ui(&mut self, ui: &mut egui::Ui) {
-        for plugin in &mut self.plugins {
-            plugin.menu_ui(ui);
+        for p in &mut self.plugins {
+            unsafe {
+                p.as_plugin_mut().menu_ui(ui);
+            }
         }
     }
 }

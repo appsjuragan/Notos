@@ -6,6 +6,7 @@
 
 ## 🚀 Key Features
 
+- **🧩 Dynamic Plugin System**: Robust architecture using an external SDK (`notos_sdk`) to load `.dll`/`.so` plugins at runtime without recompiling the main app.
 - **💾 Zero Data Loss**: Automatically saves your session (tabs, content, undo history, and selections) on close and restores it instantly upon reopening.
 - **🖱️ Right-Click Context Menu**: Full context menu support for Undo, Redo, Cut, Copy, Paste, and Select All.
 - **⚡ Blazing Fast Performance**: Built with Rust for a near-instant startup and smooth editing experience, even with large files.

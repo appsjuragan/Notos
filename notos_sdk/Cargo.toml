@@ -1,0 +1,9 @@
+[package]
+name = "notos_sdk"
+version = "0.2.1"
+edition = "2021"
+
+[dependencies]
+eframe = "0.29.1"
+egui = "0.29.1"
+log = "0.4"

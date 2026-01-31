@@ -1,10 +1,9 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // Hide console window on Windows in release
+#![windows_subsystem = "windows"] // Hide console window on Windows
 
 mod app;
 mod dialogs;
 mod editor;
 mod plugin;
-mod plugins;
 mod ui;
 mod utils;
 
@@ -25,7 +24,7 @@ fn main() -> eframe::Result<()> {
     };
 
     eframe::run_native(
-        "Notos Text Editor",
+        &format!("Notos Text Editor v{}", env!("CARGO_PKG_VERSION")),
         native_options,
         Box::new(|cc| Ok(Box::new(NotosApp::new(cc)))),
     )

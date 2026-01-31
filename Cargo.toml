@@ -1,9 +1,14 @@
 [package]
 name = "rust-notos"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 
+[workspace]
+members = ["notos_sdk", "plugins/notos_plugin_about"]
+
 [dependencies]
+notos_sdk = { path = "./notos_sdk" }
+libloading = "0.8"
 eframe = "0.29.1"
 egui = "0.29.1"
 serde = { version = "1.0", features = ["derive"] }

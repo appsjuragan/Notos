@@ -1,0 +1,13 @@
+[package]
+name = "notos_plugin_about"
+version = "0.2.1"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+notos_sdk = { path = "../../notos_sdk" }
+egui = "0.29.1"
+eframe = "0.29.1"
+log = "0.4"

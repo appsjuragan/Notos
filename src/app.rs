@@ -108,9 +108,7 @@ impl NotosApp {
         }
 
         // Load plugins here
-        app.plugin_manager
-            .register(Box::new(crate::plugins::stats::StatsPlugin::default()));
-
+        app.plugin_manager.load_plugins();
         app.plugin_manager.on_load(&cc.egui_ctx);
 
         app
