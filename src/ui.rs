@@ -144,7 +144,7 @@ pub fn menu_bar(
             ui.separator();
             ui.menu_button("🔠 Change Font", |ui| {
                 if ui
-                    .selectable_label(editor_font_family == "Monospace", "⌨️ Monospace")
+                    .selectable_label(editor_font_family == "Monospace", "⌨ Monospace")
                     .clicked()
                 {
                     action = Some(MenuAction::ChangeFont("Monospace".to_string()));
