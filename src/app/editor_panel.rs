@@ -191,17 +191,24 @@ impl NotosApp {
                             let galley_origin = output.galley_pos;
                             let painter = ui.painter();
 
-                            for (start, end) in match_ranges {
+                            for (byte_start, byte_end) in match_ranges {
                                 let galley = &output.galley;
 
+                                // Convert byte offsets -> char counts for egui's galley
+                                // (egui normalizes \r\n to \n, so raw byte offsets drift)
+                                let char_start = text[..byte_start].chars().count();
+                                let char_end = text[..byte_end].chars().count();
+
                                 // Lookup start geometry (galley-local)
-                                let pcursor_start =
-                                    galley.from_ccursor(egui::text::CCursor::new(start)).pcursor;
+                                let pcursor_start = galley
+                                    .from_ccursor(egui::text::CCursor::new(char_start))
+                                    .pcursor;
                                 let local_start = galley.pos_from_pcursor(pcursor_start);
 
                                 // Lookup end geometry (galley-local)
-                                let pcursor_end =
-                                    galley.from_ccursor(egui::text::CCursor::new(end)).pcursor;
+                                let pcursor_end = galley
+                                    .from_ccursor(egui::text::CCursor::new(char_end))
+                                    .pcursor;
                                 let local_end = galley.pos_from_pcursor(pcursor_end);
 
                                 // Translate to screen space
@@ -210,10 +217,9 @@ impl NotosApp {
                                     galley_origin + egui::vec2(local_end.min.x, local_start.max.y),
                                 );
 
-                                // Active match (cursor is on this one): vivid amber;
-                                // Other matches: soft yellow
+                                // Active match: compare by char counts (tab.cursor_range stores char counts)
                                 let is_active = active_range
-                                    .map(|(p, s)| p == start && s == end)
+                                    .map(|(p, s)| p == char_start && s == char_end)
                                     .unwrap_or(false);
 
                                 let (fill, stroke_color) = if is_active {

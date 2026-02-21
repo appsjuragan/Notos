@@ -101,26 +101,40 @@ impl FindDialog {
                 // Check if current selection matches query
                 if let Some(mut state) = egui::TextEdit::load_state(ctx, id) {
                     if let Some(range) = state.cursor.char_range() {
-                        let start = range.primary.index.min(range.secondary.index);
-                        let end = range.primary.index.max(range.secondary.index);
+                        // egui gives us char counts; convert to byte offsets for slice ops
+                        let char_start = range.primary.index.min(range.secondary.index);
+                        let char_end = range.primary.index.max(range.secondary.index);
+                        let byte_start = tab
+                            .content
+                            .char_indices()
+                            .nth(char_start)
+                            .map(|(i, _)| i)
+                            .unwrap_or(tab.content.len());
+                        let byte_end = tab
+                            .content
+                            .char_indices()
+                            .nth(char_end)
+                            .map(|(i, _)| i)
+                            .unwrap_or(tab.content.len());
 
-                        if start < tab.content.len() && end <= tab.content.len() {
-                            let selected_text = &tab.content[start..end];
+                        if byte_start <= tab.content.len() && byte_end <= tab.content.len() {
+                            let selected_text = &tab.content[byte_start..byte_end];
                             if selected_text == query {
                                 // Replace
                                 tab.push_undo(tab.content.clone());
-                                tab.content.replace_range(start..end, replace);
+                                tab.content.replace_range(byte_start..byte_end, replace);
                                 tab.is_dirty = true;
 
-                                // Update cursor to end of replacement
-                                let new_idx = start + replace.len();
+                                // new cursor position: byte offset -> char count
+                                let new_byte = byte_start + replace.len();
+                                let new_char = tab.content[..new_byte].chars().count();
                                 state
                                     .cursor
                                     .set_char_range(Some(egui::text::CCursorRange::one(
-                                        egui::text::CCursor::new(new_idx),
+                                        egui::text::CCursor::new(new_char),
                                     )));
                                 egui::TextEdit::store_state(ctx, id, state);
-                                tab.cursor_range = Some((new_idx, new_idx));
+                                tab.cursor_range = Some((new_char, new_char));
                                 tab.scroll_to_cursor = true;
                                 ctx.request_repaint();
                             }
@@ -156,36 +170,42 @@ impl FindDialog {
             if let Some(tab) = active_tab {
                 let text = &tab.content;
                 let id = egui::Id::new("editor").with(tab.id);
-                let mut start_idx = 0;
 
+                // egui cursor gives char count; convert to byte offset for str::find
+                let mut start_byte = 0usize;
                 if let Some(state) = egui::TextEdit::load_state(ctx, id) {
                     if let Some(range) = state.cursor.char_range() {
-                        // Start searching after the current selection/cursor
-                        start_idx = range.primary.index.max(range.secondary.index);
+                        let char_pos = range.primary.index.max(range.secondary.index);
+                        start_byte = text
+                            .char_indices()
+                            .nth(char_pos)
+                            .map(|(i, _)| i)
+                            .unwrap_or(text.len());
                     }
                 }
 
-                let search_slice = if start_idx < text.len() {
-                    &text[start_idx..]
-                } else {
-                    ""
-                };
+                // Find next match by byte offset
+                let found_byte = text[start_byte..]
+                    .find(query)
+                    .map(|i| start_byte + i)
+                    .or_else(|| text.find(query)); // wrap around
 
-                let found_idx = search_slice.find(query).map(|i| start_idx + i).or_else(|| {
-                    // Wrap around
-                    text.find(query)
-                });
+                if let Some(byte_idx) = found_byte {
+                    let byte_end = byte_idx + query.len();
+                    // Convert byte offsets to char counts for egui CCursor
+                    let char_idx = text[..byte_idx].chars().count();
+                    let char_end = text[..byte_end].chars().count();
 
-                if let Some(idx) = found_idx {
                     if let Some(mut state) = egui::TextEdit::load_state(ctx, id) {
                         state
                             .cursor
                             .set_char_range(Some(egui::text::CCursorRange::two(
-                                egui::text::CCursor::new(idx),
-                                egui::text::CCursor::new(idx + query.len()),
+                                egui::text::CCursor::new(char_idx),
+                                egui::text::CCursor::new(char_end),
                             )));
                         egui::TextEdit::store_state(ctx, id, state);
-                        tab.cursor_range = Some((idx, idx + query.len()));
+                        // Store char counts so editor_panel uses consistent units
+                        tab.cursor_range = Some((char_idx, char_end));
                         tab.scroll_to_cursor = true;
                         ctx.request_repaint();
                     }
@@ -244,25 +264,26 @@ impl GotoLineDialog {
         if goto_clicked {
             if let Ok(target_line) = self.line_str.parse::<usize>() {
                 if let Some(tab) = active_tab {
-                    // Find the byte index of the start of the line
                     let text = &tab.content;
-                    let mut current_line = 1;
-                    let mut char_idx = 0;
 
+                    // Find the byte offset of the target line start
+                    let mut current_line = 1;
+                    let mut byte_idx = 0usize;
                     for (i, c) in text.char_indices() {
                         if current_line == target_line {
-                            char_idx = i;
+                            byte_idx = i;
                             break;
                         }
                         if c == '\n' {
                             current_line += 1;
                         }
                     }
-
-                    // If target line is beyond end, go to end
                     if current_line < target_line {
-                        char_idx = text.len();
+                        byte_idx = text.len();
                     }
+
+                    // Convert byte offset to char count for egui CCursor
+                    let char_idx = text[..byte_idx].chars().count();
 
                     let id = egui::Id::new("editor").with(tab.id);
                     if let Some(mut state) = egui::TextEdit::load_state(ctx, id) {
@@ -273,10 +294,9 @@ impl GotoLineDialog {
                             )));
                         egui::TextEdit::store_state(ctx, id, state);
 
-                        // Sync cursor_range so editor_panel preserves this position
+                        // Store char count so editor_panel uses consistent units
                         tab.cursor_range = Some((char_idx, char_idx));
 
-                        // Force scroll to cursor
                         tab.scroll_to_cursor = true;
                         ctx.request_repaint();
 
