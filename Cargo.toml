@@ -1,9 +1,10 @@
 [package]
 name = "rust-notos"
-version = "0.3.1"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 
 [workspace]
+package = { version = "0.3.1", edition = "2021" }
 members = ["notos_sdk", "plugins/notos_plugin_about", "plugins/notos_plugin_json_format", "plugins/notos_plugin_base64", "plugins/notos_plugin_url_detector"]
 
 [dependencies]
