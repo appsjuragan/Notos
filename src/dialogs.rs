@@ -8,6 +8,7 @@ pub struct FindDialog {
     pub replace_with: String,
     pub match_case: bool,
     pub replace_mode: bool,
+    pub just_opened: bool,
 }
 
 impl FindDialog {
@@ -17,30 +18,34 @@ impl FindDialog {
 
         if open {
             let title = if self.replace_mode { "Replace" } else { "Find" };
-            egui::Window::new(title).open(&mut open).show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    let res = ui.text_edit_singleline(&mut self.query);
-                    if self.open && !find_next_clicked {
-                        res.request_focus();
-                    }
-
-                    if res.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                        find_next_clicked = true;
-                    }
-                });
-
-                if self.replace_mode {
+            egui::Window::new(title)
+                .id(egui::Id::new("find_replace_dialog_v3"))
+                .open(&mut open)
+                .default_width(320.0)
+                .show(ctx, |ui| {
                     ui.horizontal(|ui| {
-                        ui.label("Replace with:");
-                        ui.text_edit_singleline(&mut self.replace_with);
+                        let res = ui.text_edit_singleline(&mut self.query);
+                        if self.just_opened {
+                            res.request_focus();
+                            self.just_opened = false;
+                        }
+
+                        if res.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                            find_next_clicked = true;
+                        }
                     });
-                }
 
-                ui.checkbox(&mut self.match_case, "Match case");
+                    if self.replace_mode {
+                        ui.horizontal(|ui| {
+                            ui.label("Replace with:");
+                            ui.text_edit_singleline(&mut self.replace_with);
+                        });
+                    }
 
-                ui.horizontal(|ui| {
+                    ui.checkbox(&mut self.match_case, "Match case");
+
                     ui.with_layout(
-                        egui::Layout::left_to_right(egui::Align::Center)
+                        egui::Layout::left_to_right(egui::Align::Min)
                             .with_main_align(egui::Align::Center),
                         |ui| {
                             let button_size = egui::vec2(80.0, 24.0);
@@ -73,7 +78,6 @@ impl FindDialog {
                         },
                     );
                 });
-            });
         }
         self.open = open;
 
@@ -93,7 +97,7 @@ impl FindDialog {
 
         if !query.is_empty() {
             if let Some(tab) = active_tab {
-                let id = egui::Id::new("editor");
+                let id = egui::Id::new("editor").with(tab.id);
                 // Check if current selection matches query
                 if let Some(mut state) = egui::TextEdit::load_state(ctx, id) {
                     if let Some(range) = state.cursor.char_range() {
@@ -116,6 +120,7 @@ impl FindDialog {
                                         egui::text::CCursor::new(new_idx),
                                     )));
                                 egui::TextEdit::store_state(ctx, id, state);
+                                tab.cursor_range = Some((new_idx, new_idx));
                                 tab.scroll_to_cursor = true;
                                 ctx.request_repaint();
                             }
@@ -150,7 +155,7 @@ impl FindDialog {
         if !query.is_empty() {
             if let Some(tab) = active_tab {
                 let text = &tab.content;
-                let id = egui::Id::new("editor");
+                let id = egui::Id::new("editor").with(tab.id);
                 let mut start_idx = 0;
 
                 if let Some(state) = egui::TextEdit::load_state(ctx, id) {
@@ -180,6 +185,7 @@ impl FindDialog {
                                 egui::text::CCursor::new(idx + query.len()),
                             )));
                         egui::TextEdit::store_state(ctx, id, state);
+                        tab.cursor_range = Some((idx, idx + query.len()));
                         tab.scroll_to_cursor = true;
                         ctx.request_repaint();
                     }
@@ -201,9 +207,11 @@ impl GotoLineDialog {
         let mut goto_clicked = false;
         if goto_open {
             egui::Window::new("Go To Line")
+                .id(egui::Id::new("gotoline_dialog_v3"))
                 .open(&mut goto_open)
                 .collapsible(false)
                 .resizable(false)
+                .default_width(220.0)
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
                         ui.label("Line number:");
@@ -216,21 +224,19 @@ impl GotoLineDialog {
                         }
                     });
 
-                    ui.horizontal(|ui| {
-                        ui.with_layout(
-                            egui::Layout::left_to_right(egui::Align::Center)
-                                .with_main_align(egui::Align::Center),
-                            |ui| {
-                                let button_size = egui::vec2(80.0, 24.0);
-                                if ui
-                                    .add_sized(button_size, egui::Button::new("Go To"))
-                                    .clicked()
-                                {
-                                    goto_clicked = true;
-                                }
-                            },
-                        );
-                    });
+                    ui.with_layout(
+                        egui::Layout::left_to_right(egui::Align::Min)
+                            .with_main_align(egui::Align::Center),
+                        |ui| {
+                            let button_size = egui::vec2(80.0, 24.0);
+                            if ui
+                                .add_sized(button_size, egui::Button::new("Go To"))
+                                .clicked()
+                            {
+                                goto_clicked = true;
+                            }
+                        },
+                    );
                 });
         }
         self.open = goto_open;
@@ -258,7 +264,7 @@ impl GotoLineDialog {
                         char_idx = text.len();
                     }
 
-                    let id = egui::Id::new("editor");
+                    let id = egui::Id::new("editor").with(tab.id);
                     if let Some(mut state) = egui::TextEdit::load_state(ctx, id) {
                         state
                             .cursor
@@ -267,10 +273,11 @@ impl GotoLineDialog {
                             )));
                         egui::TextEdit::store_state(ctx, id, state);
 
+                        // Sync cursor_range so editor_panel preserves this position
+                        tab.cursor_range = Some((char_idx, char_idx));
+
                         // Force scroll to cursor
                         tab.scroll_to_cursor = true;
-                        ctx.request_repaint();
-                        // We need to request a repaint to ensure the scroll happens
                         ctx.request_repaint();
 
                         self.open = false;
@@ -317,62 +324,62 @@ impl CloseConfirmationDialog {
             };
 
             egui::Window::new("Save Changes?")
+                .id(egui::Id::new("close_confirmation_dialog_v3"))
                 .collapsible(false)
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+                .default_width(320.0)
                 .show(ctx, |ui| {
                     ui.label(format!("Do you want to save changes to \"{}\"?", tab_title));
                     ui.add_space(12.0);
-                    ui.horizontal(|ui| {
-                        ui.with_layout(
-                            egui::Layout::left_to_right(egui::Align::Center)
-                                .with_main_align(egui::Align::Center),
-                            |ui| {
-                                let button_size = egui::vec2(80.0, 24.0);
+                    ui.with_layout(
+                        egui::Layout::left_to_right(egui::Align::Min)
+                            .with_main_align(egui::Align::Center),
+                        |ui| {
+                            let button_size = egui::vec2(80.0, 24.0);
 
-                                if ui
-                                    .add_sized(button_size, egui::Button::new("Yes"))
-                                    .clicked()
-                                {
-                                    let saved = {
-                                        let tab = &mut tabs[idx];
-                                        save_tab_fn(tab).is_ok() && !tab.is_dirty
-                                    };
+                            if ui
+                                .add_sized(button_size, egui::Button::new("Yes"))
+                                .clicked()
+                            {
+                                let saved = {
+                                    let tab = &mut tabs[idx];
+                                    save_tab_fn(tab).is_ok() && !tab.is_dirty
+                                };
 
-                                    if saved && !self.closing_app {
-                                        tabs.remove(idx);
-                                        if *active_tab_id == Some(tab_id) {
-                                            *active_tab_id = tabs.last().map(|t| t.id);
-                                        }
-                                        should_close_dialog = true;
+                                if saved && !self.closing_app {
+                                    tabs.remove(idx);
+                                    if *active_tab_id == Some(tab_id) {
+                                        *active_tab_id = tabs.last().map(|t| t.id);
+                                    }
+                                    should_close_dialog = true;
+                                }
+                            }
+
+                            if ui.add_sized(button_size, egui::Button::new("No")).clicked() {
+                                if !self.closing_app {
+                                    tabs.remove(idx);
+                                    if *active_tab_id == Some(tab_id) {
+                                        *active_tab_id = tabs.last().map(|t| t.id);
+                                    }
+                                    should_close_dialog = true;
+                                } else {
+                                    // Mark as not dirty so we don't ask again
+                                    if let Some(tab) = tabs.get_mut(idx) {
+                                        tab.is_dirty = false;
                                     }
                                 }
+                            }
 
-                                if ui.add_sized(button_size, egui::Button::new("No")).clicked() {
-                                    if !self.closing_app {
-                                        tabs.remove(idx);
-                                        if *active_tab_id == Some(tab_id) {
-                                            *active_tab_id = tabs.last().map(|t| t.id);
-                                        }
-                                        should_close_dialog = true;
-                                    } else {
-                                        // Mark as not dirty so we don't ask again
-                                        if let Some(tab) = tabs.get_mut(idx) {
-                                            tab.is_dirty = false;
-                                        }
-                                    }
-                                }
-
-                                if ui
-                                    .add_sized(button_size, egui::Button::new("Cancel"))
-                                    .clicked()
-                                {
-                                    self.open = false;
-                                    self.closing_app = false;
-                                }
-                            },
-                        );
-                    });
+                            if ui
+                                .add_sized(button_size, egui::Button::new("Cancel"))
+                                .clicked()
+                            {
+                                self.open = false;
+                                self.closing_app = false;
+                            }
+                        },
+                    );
                 });
         } else {
             // No more dirty tabs or tab already gone

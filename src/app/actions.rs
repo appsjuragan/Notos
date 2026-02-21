@@ -93,10 +93,12 @@ impl NotosApp {
             MenuAction::Find => {
                 self.find_dialog.open = true;
                 self.find_dialog.replace_mode = false;
+                self.find_dialog.just_opened = true;
             }
             MenuAction::Replace => {
                 self.find_dialog.open = true;
                 self.find_dialog.replace_mode = true;
+                self.find_dialog.just_opened = true;
             }
             MenuAction::GotoLine => {
                 self.goto_dialog.open = true;

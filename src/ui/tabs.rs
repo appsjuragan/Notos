@@ -102,7 +102,7 @@ pub fn tab_bar(
                                         action = Some(a);
                                     }
 
-                                    ui.add_space(12.0);
+                                    ui.add_space(4.0);
                                 }
                                 inner_action
                             })

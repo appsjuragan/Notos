@@ -109,11 +109,29 @@ impl NotosApp {
                         layout_job.wrap.max_width =
                             if word_wrap { wrap_width } else { f32::INFINITY };
 
-                        
                         ui.fonts(|f| f.layout_job(layout_job))
                     };
 
                     egui::Frame::none().fill(editor_bg).show(ui, |ui| {
+                        let mut force_scroll = false;
+                        if tab.scroll_to_cursor {
+                            force_scroll = true;
+                            let id = egui::Id::new("editor").with(tab.id);
+                            ui.memory_mut(|mem| mem.request_focus(id));
+                            let mut state =
+                                egui::TextEdit::load_state(ui.ctx(), id).unwrap_or_default();
+                            if let Some((p, s)) = tab.cursor_range {
+                                state
+                                    .cursor
+                                    .set_char_range(Some(egui::text::CCursorRange::two(
+                                        egui::text::CCursor::new(p),
+                                        egui::text::CCursor::new(s),
+                                    )));
+                            }
+                            egui::TextEdit::store_state(ui.ctx(), id, state);
+                            tab.scroll_to_cursor = false;
+                        }
+
                         let text_edit = egui::TextEdit::multiline(&mut tab.content)
                             .id(egui::Id::new("editor").with(tab.id))
                             .font(font_id.clone())
@@ -131,26 +149,103 @@ impl NotosApp {
                         let output = text_edit.show(ui);
                         let res = output.response;
 
-                        galley_to_draw = Some(output.galley);
+                        galley_to_draw = Some(output.galley.clone());
 
                         text_edit_res = Some(res.clone());
 
-                        if tab.scroll_to_cursor {
-                            res.request_focus();
-                            let id = egui::Id::new("editor").with(tab.id);
-                            let mut state =
-                                egui::TextEdit::load_state(ui.ctx(), id).unwrap_or_default();
-                            if let Some((p, s)) = tab.cursor_range {
-                                state
-                                    .cursor
-                                    .set_char_range(Some(egui::text::CCursorRange::two(
-                                        egui::text::CCursor::new(p),
-                                        egui::text::CCursor::new(s),
-                                    )));
-                            }
-                            egui::TextEdit::store_state(ui.ctx(), id, state);
+                        // Render Find Highlight (Undermost Layer) if Dialog Active
+                        if self.find_dialog.open && !self.find_dialog.query.is_empty() {
+                            let text = &tab.content;
+                            let query = &self.find_dialog.query;
+                            let match_case = self.find_dialog.match_case;
+                            let active_range = tab.cursor_range;
+                            let mut match_ranges = Vec::new();
 
-                            tab.scroll_to_cursor = false;
+                            let mut last_idx = 0;
+                            if match_case {
+                                while let Some(idx) = text[last_idx..].find(query) {
+                                    let start = last_idx + idx;
+                                    let end = start + query.len();
+                                    if text.is_char_boundary(start) && text.is_char_boundary(end) {
+                                        match_ranges.push((start, end));
+                                    }
+                                    last_idx = start + 1;
+                                }
+                            } else {
+                                let query_lower = query.to_lowercase();
+                                let string_lower = text.to_lowercase();
+                                while let Some(idx) = string_lower[last_idx..].find(&query_lower) {
+                                    let start = last_idx + idx;
+                                    let end = start + query_lower.len();
+                                    if text.is_char_boundary(start)
+                                        && text.is_char_boundary(end)
+                                        && text[start..end].to_lowercase() == query_lower
+                                    {
+                                        match_ranges.push((start, end));
+                                    }
+                                    last_idx = start + 1;
+                                }
+                            }
+
+                            // Use galley_pos: the exact Pos2 origin egui uses to paint the galley
+                            let galley_origin = output.galley_pos;
+                            let painter = ui.painter();
+
+                            for (start, end) in match_ranges {
+                                let galley = &output.galley;
+
+                                // Lookup start geometry (galley-local)
+                                let pcursor_start =
+                                    galley.from_ccursor(egui::text::CCursor::new(start)).pcursor;
+                                let local_start = galley.pos_from_pcursor(pcursor_start);
+
+                                // Lookup end geometry (galley-local)
+                                let pcursor_end =
+                                    galley.from_ccursor(egui::text::CCursor::new(end)).pcursor;
+                                let local_end = galley.pos_from_pcursor(pcursor_end);
+
+                                // Translate to screen space
+                                let bg_rect = egui::Rect::from_min_max(
+                                    galley_origin + local_start.min.to_vec2(),
+                                    galley_origin + egui::vec2(local_end.min.x, local_start.max.y),
+                                );
+
+                                // Active match (cursor is on this one): vivid amber;
+                                // Other matches: soft yellow
+                                let is_active = active_range
+                                    .map(|(p, s)| p == start && s == end)
+                                    .unwrap_or(false);
+
+                                let (fill, stroke_color) = if is_active {
+                                    (
+                                        egui::Color32::from_rgba_unmultiplied(255, 171, 64, 210),
+                                        egui::Color32::from_rgba_unmultiplied(230, 120, 0, 240),
+                                    )
+                                } else {
+                                    (
+                                        egui::Color32::from_rgba_unmultiplied(255, 241, 118, 130),
+                                        egui::Color32::from_rgba_unmultiplied(200, 180, 0, 160),
+                                    )
+                                };
+
+                                painter.rect_filled(bg_rect, 3.0, fill);
+                                painter.rect_stroke(
+                                    bg_rect,
+                                    3.0,
+                                    egui::Stroke::new(1.0, stroke_color),
+                                );
+                            }
+                        }
+
+                        if force_scroll {
+                            if let Some(r) = output.cursor_range {
+                                let p = output.galley.pos_from_pcursor(r.primary.pcursor);
+                                let rect = egui::Rect::from_min_max(
+                                    res.rect.min + egui::vec2(margin, margin) + p.min.to_vec2(),
+                                    res.rect.min + egui::vec2(margin, margin) + p.max.to_vec2(),
+                                );
+                                ui.scroll_to_rect(rect, Some(egui::Align::Center));
+                            }
                         }
 
                         if res.changed() {
