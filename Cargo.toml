@@ -1,10 +1,10 @@
 [package]
 name = "rust-notos"
-version = "0.2.4"
+version = "0.3.0"
 edition = "2021"
 
 [workspace]
-members = ["notos_sdk", "plugins/notos_plugin_about", "plugins/notos_plugin_json_format", "plugins/notos_plugin_base64"]
+members = ["notos_sdk", "plugins/notos_plugin_about", "plugins/notos_plugin_json_format", "plugins/notos_plugin_base64", "plugins/notos_plugin_url_detector"]
 
 [dependencies]
 notos_sdk = { path = "./notos_sdk" }

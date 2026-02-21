@@ -1,0 +1,13 @@
+[package]
+name = "notos_plugin_url_detector"
+version = "0.1.0"
+edition = "2021"
+description = "A plugin that detects URLs and opens them with the default browser when Ctrl+Click is pressed."
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+egui = { version = "0.29", default-features = false }
+notos_sdk = { path = "../../notos_sdk" }
+webbrowser = "1.0.1"

@@ -8,6 +8,7 @@
 
 - **⚡ Extreme Binary Size Optimization**: Reached **~1.8MB** (from ~13MB) by removing embedded fonts and trimming heavy dependencies like `anyhow`, `uuid`, and `encoding_rs`.
 - **🧩 Dynamic Plugin System**: Robust architecture using an external SDK (`notos_sdk`) to load `.dll`/`.so` plugins at runtime without recompiling the main app.
+- **🔗 URL Detection**: Built-in plugin that detects URLs in text. Hold `Ctrl` to underline and highlight URLs, and `Ctrl+Click` to open them in your default browser. Togglable via the Plugins menu.
 - **🎨 System Font Loader**: Dynamically loads fonts from the OS (e.g., Segoe UI, Consolas, Segoe UI Symbol/Emoji on Windows). This keeps the binary small while ensuring full UTF-8 icon support.
 - **💾 Zero Data Loss**: Automatically saves your session (tabs, content, undo history, and selections) on close and restores it instantly upon reopening.
 - **🖱️ Right-Click Context Menu**: Full context menu support for Undo, Redo, Cut, Copy, Paste, and Select All.
@@ -34,6 +35,22 @@
 | **Go To Line** | `Ctrl + G` |
 | **Zoom In/Out** | `Ctrl + Mouse Wheel` |
 | **Insert Date/Time** | `F5` |
+| **Open URL** | `Ctrl + Click` on a URL |
+
+---
+
+## 🔌 Plugins
+
+Notos ships with the following built-in plugins:
+
+| Plugin | Description |
+| :--- | :--- |
+| **Base64 Encode/Decode** | Encode or decode selected text as Base64. |
+| **JSON Format** | Pretty-print or minify JSON content. |
+| **URL Detector** | Detects URLs in text. `Ctrl+Hover` to underline, `Ctrl+Click` to open. Togglable in the Plugins menu. |
+| **About** | Shows application information. |
+
+Plugins can be enabled/disabled from the **🔌 Plugins** menu.
 
 ---
 

@@ -1334,8 +1334,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "notos_plugin_url_detector"
+version = "0.1.0"
+dependencies = [
+ "egui",
+ "notos_sdk",
+ "webbrowser",
+]
+
+[[package]]
 name = "notos_sdk"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "eframe",
  "egui",
@@ -1943,7 +1952,7 @@ dependencies = [
 
 [[package]]
 name = "rust-notos"
-version = "0.2.4"
+version = "0.3.0"
 dependencies = [
  "arboard",
  "chrono",

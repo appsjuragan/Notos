@@ -52,6 +52,8 @@ pub struct NotosApp {
     custom_fonts: std::collections::HashMap<String, Vec<u8>>,
     recent_files: Vec<std::path::PathBuf>,
     ipc_receiver: std::sync::mpsc::Receiver<String>,
+    next_underline: Option<(usize, usize)>,
+    hovered_char_idx: Option<usize>,
 }
 
 impl NotosApp {
@@ -75,6 +77,8 @@ impl NotosApp {
             close_confirmation: CloseConfirmationDialog::default(),
             recent_files: Vec::new(),
             ipc_receiver: rx,
+            next_underline: None,
+            hovered_char_idx: None,
         };
 
         if let Some(session) = Self::load_session() {
@@ -168,12 +172,14 @@ impl NotosApp {
             t.path.as_ref().map(|p| p.to_string_lossy()) == Some(path.to_string_lossy())
         }) {
             self.active_tab_id = Some(self.tabs[pos].id);
+            self.tabs[pos].scroll_to_cursor = true;
             return true;
         }
 
         let path_clone = path.clone();
         match EditorTab::from_file(path) {
-            Ok(tab) => {
+            Ok(mut tab) => {
+                tab.scroll_to_cursor = true;
                 self.active_tab_id = Some(tab.id);
                 self.tabs.push(tab);
                 self.add_to_recent(path_clone);
@@ -315,6 +321,7 @@ impl NotosApp {
                     tab.cursor_range = Some((new_idx, new_idx));
                 }
             }
+            PluginAction::UnderlineRegion(_, _) => {}
         }
     }
 
@@ -663,9 +670,7 @@ impl eframe::App for NotosApp {
             egui::Color32::WHITE
         };
 
-        // Create EditorContext for plugins
-        let ed_ctx = get_ed_ctx(&self.tabs, self.active_tab_id);
-
+        // Create EditorContext for plugins. We will pass this per frame. Wait to create it until needed.
         let mut menu_action_to_run = None;
         let mut plugin_action_to_run_top = notos_sdk::PluginAction::None;
         let mut tab_action_to_run = None;
@@ -674,6 +679,9 @@ impl eframe::App for NotosApp {
         let word_wrap = &mut self.word_wrap;
         let show_line_numbers = &mut self.show_line_numbers;
         let dark_mode = &mut self.dark_mode;
+        let editor_font_family = &self.editor_font_family;
+        let custom_fonts = &self.custom_fonts;
+        let recent_files = &self.recent_files;
         let tabs = &self.tabs;
         let active_tab_id = self.active_tab_id;
 
@@ -681,15 +689,16 @@ impl eframe::App for NotosApp {
         egui::TopBottomPanel::top("top_panel")
             .frame(egui::Frame::default().fill(panel_bg).inner_margin(8.0))
             .show(ctx, |ui| {
+                let ed_ctx = get_ed_ctx(tabs, active_tab_id, self.hovered_char_idx);
                 let (m, p) = crate::ui::menu_bar(
                     ui,
                     plugin_manager,
                     word_wrap,
                     show_line_numbers,
                     dark_mode,
-                    &self.editor_font_family,
-                    &self.custom_fonts,
-                    &self.recent_files,
+                    editor_font_family,
+                    custom_fonts,
+                    recent_files,
                     &ed_ctx,
                 );
                 menu_action_to_run = m;
@@ -707,12 +716,16 @@ impl eframe::App for NotosApp {
         if let Some(action) = tab_action_to_run {
             match action {
                 crate::ui::TabAction::New => {
-                    let tab = EditorTab::default();
+                    let mut tab = EditorTab::default();
+                    tab.scroll_to_cursor = true;
                     self.active_tab_id = Some(tab.id);
                     self.tabs.push(tab);
                 }
                 crate::ui::TabAction::Select(id) => {
                     self.active_tab_id = Some(id);
+                    if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == id) {
+                        tab.scroll_to_cursor = true;
+                    }
                 }
                 crate::ui::TabAction::Close(id) => {
                     self.close_tab(id);
@@ -767,11 +780,13 @@ impl eframe::App for NotosApp {
 
         // Central Panel: Editor
         egui::CentralPanel::default()
-            .frame(egui::Frame::default().fill(if self.dark_mode {
-                egui::Color32::from_gray(28)
-            } else {
-                egui::Color32::WHITE
-            }))
+            .frame(egui::Frame::default()
+                .fill(if self.dark_mode {
+                    egui::Color32::from_gray(28)
+                } else {
+                    egui::Color32::WHITE
+                })
+                .inner_margin(egui::Margin { left: 4.0, right: 0.0, top: 0.0, bottom: 0.0 }))
             .show(ctx, |ui| {
                 let plugin_manager = &mut self.plugin_manager;
                 let tabs = &mut self.tabs;
@@ -781,6 +796,8 @@ impl eframe::App for NotosApp {
                     .iter()
                     .position(|t| Some(t.id) == active_tab_id)
                     .unwrap_or(0);
+                
+                let mut hovered_idx_out = None;
 
                 if let Some(tab) = tabs.get_mut(idx) {
                     let mut content_changed = false;
@@ -826,7 +843,7 @@ impl eframe::App for NotosApp {
                             0.0
                         };
 
-                        let available_height = ui.available_height();
+                        let _available_height = ui.available_height();
 
                         let editor_bg = if self.dark_mode {
                             egui::Color32::from_gray(28)
@@ -835,46 +852,72 @@ impl eframe::App for NotosApp {
                         };
 
                         let mut text_edit_res = None;
-                        let mut galley_to_draw = None;
+                        let mut galley_to_draw: Option<std::sync::Arc<egui::Galley>> = None;
 
                         ui.horizontal(|ui| {
                             if self.show_line_numbers {
                                 ui.add_space(line_number_width + 8.0);
                             }
 
+                            let next_underline_ref = self.next_underline;
+                            let word_wrap = self.word_wrap;
+
                             let mut layouter = |ui: &egui::Ui, string: &str, wrap_width: f32| {
-                                let layout_job = egui::text::LayoutJob::simple(
-                                    string.to_string(),
-                                    font_id.clone(),
-                                    ui.visuals().widgets.noninteractive.text_color(),
-                                    if self.word_wrap {
-                                        wrap_width
+                                let mut layout_job = egui::text::LayoutJob::default();
+                                let base_format = egui::TextFormat {
+                                    font_id: font_id.clone(),
+                                    color: ui.visuals().widgets.noninteractive.text_color(),
+                                    ..Default::default()
+                                };
+                                
+                                if let Some((start, end)) = next_underline_ref {
+                                    if start < string.len() && end <= string.len() && start < end {
+                                        layout_job.append(&string[..start], 0.0, base_format.clone());
+                                        let mut ul_format = base_format.clone();
+                                        ul_format.underline = egui::Stroke::new(1.0, ui.visuals().widgets.noninteractive.text_color());
+                                        layout_job.append(&string[start..end], 0.0, ul_format);
+                                        layout_job.append(&string[end..], 0.0, base_format.clone());
                                     } else {
-                                        f32::INFINITY
-                                    },
-                                );
+                                        layout_job.append(string, 0.0, base_format.clone());
+                                    }
+                                } else {
+                                    layout_job.append(string, 0.0, base_format.clone());
+                                }
+
+                                layout_job.wrap.max_width = if word_wrap {
+                                    wrap_width
+                                } else {
+                                    f32::INFINITY
+                                };
+
                                 let galley = ui.fonts(|f| f.layout_job(layout_job));
-                                galley_to_draw = Some(galley.clone());
+                                // galley_to_draw is assigned later to avoid mutable capture in layout_job
                                 galley
                             };
 
                             egui::Frame::none().fill(editor_bg).show(ui, |ui| {
-                                let res = ui.add_sized(
-                                    [ui.available_width(), available_height],
-                                    egui::TextEdit::multiline(&mut tab.content)
-                                        .id(egui::Id::new("editor").with(tab.id))
-                                        .font(font_id.clone())
-                                        .frame(false)
-                                        .code_editor()
-                                        .lock_focus(true)
-                                        .margin(egui::Margin::same(margin))
-                                        .layouter(&mut layouter)
-                                        .desired_width(if self.word_wrap {
-                                            ui.available_width()
-                                        } else {
-                                            f32::INFINITY
-                                        }),
-                                );
+                                let text_edit = egui::TextEdit::multiline(&mut tab.content)
+                                    .id(egui::Id::new("editor").with(tab.id))
+                                    .font(font_id.clone())
+                                    .frame(false)
+                                    .code_editor()
+                                    .lock_focus(true)
+                                    .margin(egui::Margin::same(margin))
+                                    .layouter(&mut layouter)
+                                    .desired_width(if word_wrap {
+                                        ui.available_width()
+                                    } else {
+                                        f32::INFINITY
+                                    });
+
+                                let output = text_edit.show(ui);
+                                let res = output.response;
+                                
+                                // To respect the available height layout from add_sized, we manually allocate.
+                                // TextEdit::show already allocated space, so add_sized might be redundant if TextEdit expands.
+                                // But if needed we can just use the output.
+                                galley_to_draw = Some(output.galley);
+                                
                                 text_edit_res = Some(res.clone());
 
                                 if tab.scroll_to_cursor {
@@ -901,6 +944,33 @@ impl eframe::App for NotosApp {
                                     tab.is_dirty = true;
                                     tab_changed_idx = Some(idx);
                                 }
+
+                                // Update hover index based on mouse position
+                                let mut hovered_idx = None;
+                                if let Some(hover_pos) = res.hover_pos() {
+                                    if let Some(galley) = galley_to_draw.as_ref() {
+                                        let text_pos = res.rect.min + egui::vec2(margin, margin);
+                                        let relative_pos = hover_pos - text_pos;
+                                        let cursor = galley.cursor_from_pos(relative_pos);
+                                        // Convert paragraph index + offset into absolute char index
+                                        // by summing lengths of all preceding paragraphs (+ newlines)
+                                        let paragraph = cursor.pcursor.paragraph;
+                                        let offset = cursor.pcursor.offset;
+                                        let content = &tab.content;
+                                        let mut abs_idx = 0usize;
+                                        for (i, line) in content.split('\n').enumerate() {
+                                            if i == paragraph {
+                                                abs_idx += offset.min(line.len());
+                                                break;
+                                            }
+                                            abs_idx += line.len() + 1; // +1 for the '\n'
+                                        }
+                                        hovered_idx = Some(abs_idx);
+                                    }
+                                }
+                                
+                                // Provide hovered_char_idx for the context menu
+                                hovered_idx_out = hovered_idx;
 
                                 if let Some(mut state) =
                                     egui::TextEdit::load_state(ui.ctx(), res.id)
@@ -989,9 +1059,10 @@ impl eframe::App for NotosApp {
 
                                     for row in &galley.rows {
                                         if is_start_of_logical_line {
+                                            let row_y = res.rect.min.y + margin + row.rect.min.y;
                                             let pos = egui::pos2(
                                                 res.rect.min.x - 8.0,
-                                                res.rect.min.y + margin + row.rect.min.y,
+                                                row_y,
                                             );
                                             painter.text(
                                                 pos,
@@ -1013,6 +1084,7 @@ impl eframe::App for NotosApp {
                             let ed_ctx = notos_sdk::EditorContext {
                                 content: &tab.content,
                                 selection: tab.cursor_range,
+                                hovered_char_idx: hovered_idx_out.clone(),
                             };
                             let can_undo = tab.can_undo();
                             let can_redo = tab.can_redo();
@@ -1136,11 +1208,18 @@ impl eframe::App for NotosApp {
                         ui.label("No open tabs. Press Ctrl+N to create a new one.");
                     });
                 }
+                self.hovered_char_idx = hovered_idx_out;
             });
 
-        let ed_ctx = get_ed_ctx(&self.tabs, self.active_tab_id);
+        let ed_ctx = get_ed_ctx(&self.tabs, self.active_tab_id, self.hovered_char_idx);
         let plugin_action = self.plugin_manager.ui(ctx, &ed_ctx);
-        self.handle_plugin_action(plugin_action, ctx);
+        if let notos_sdk::PluginAction::UnderlineRegion(start, end) = plugin_action {
+             self.next_underline = Some((start, end));
+             ctx.request_repaint(); // Need repaint to draw underline smoothly
+        } else {
+             self.next_underline = None;
+             self.handle_plugin_action(plugin_action, ctx);
+        }
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
@@ -1280,16 +1359,19 @@ fn setup_custom_style(ctx: &egui::Context, dark_mode: bool) {
 fn get_ed_ctx(
     tabs: &[EditorTab],
     active_tab_id: Option<TabId>,
+    hovered_char_idx: Option<usize>,
 ) -> notos_sdk::EditorContext<'_> {
     if let Some(tab) = tabs.iter().find(|t| Some(t.id) == active_tab_id) {
         notos_sdk::EditorContext {
             content: &tab.content,
             selection: tab.cursor_range,
+            hovered_char_idx,
         }
     } else {
         notos_sdk::EditorContext {
             content: "",
             selection: None,
+            hovered_char_idx,
         }
     }
 }

@@ -10,12 +10,15 @@ pub enum PluginAction {
     ReplaceAll(String),
     /// Replace the currently selected text in the active tab.
     ReplaceSelection(String),
+    /// Request the editor to draw an underline under the given character index range.
+    UnderlineRegion(usize, usize),
 }
 
 /// Information about the current editor state passed to plugins.
 pub struct EditorContext<'a> {
     pub content: &'a str,
     pub selection: Option<(usize, usize)>,
+    pub hovered_char_idx: Option<usize>,
 }
 
 /// The trait that all plugins must implement.
