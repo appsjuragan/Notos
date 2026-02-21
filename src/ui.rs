@@ -246,7 +246,7 @@ pub fn tab_bar(
                                     let response = ui
                                         .scope(|ui| {
                                             ui.horizontal(|ui| {
-                                                ui.spacing_mut().item_spacing.x = 4.0;
+                                                ui.spacing_mut().item_spacing.x = 2.0;
 
                                                 let title = if tab.is_dirty {
                                                     format!("* {}", tab.title)
@@ -277,7 +277,7 @@ pub fn tab_bar(
                                                     }
                                                 });
 
-                                                if ui.small_button("x").clicked() {
+                                                if ui.add(egui::Button::new("×").small().frame(false)).clicked() {
                                                     inner_action = Some(TabAction::Close(tab.id));
                                                 }
                                             });
@@ -286,7 +286,7 @@ pub fn tab_bar(
 
                                     let stroke = ui.visuals().widgets.noninteractive.bg_stroke;
                                     ui.painter().rect_stroke(
-                                        response.rect.expand(4.0),
+                                        response.rect.expand(2.0),
                                         4.0,
                                         stroke,
                                     );
@@ -329,7 +329,7 @@ pub fn status_bar(
     zoom_level: f32,
 ) -> Option<StatusBarAction> {
     let mut action = None;
-    ui.horizontal(|ui| {
+    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
         let active_tab_index = tabs.iter().position(|t| Some(t.id) == active_tab_id);
 
         if let Some(index) = active_tab_index {

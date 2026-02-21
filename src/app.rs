@@ -1342,8 +1342,8 @@ fn setup_custom_style(ctx: &egui::Context, dark_mode: bool) {
         visuals.panel_fill = egui::Color32::WHITE;
         visuals.extreme_bg_color = egui::Color32::WHITE;
 
-        visuals.selection.bg_fill = egui::Color32::from_rgb(0, 120, 215);
-        visuals.selection.stroke = egui::Stroke::new(1.0, egui::Color32::WHITE);
+        visuals.selection.bg_fill = egui::Color32::from_rgb(202, 227, 255);
+        visuals.selection.stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(0, 120, 215));
     }
 
     ctx.set_visuals(visuals.clone());
@@ -1354,6 +1354,8 @@ fn setup_custom_style(ctx: &egui::Context, dark_mode: bool) {
     // Add some padding to widgets for a more modern look
     style.spacing.item_spacing = egui::vec2(8.0, 4.0);
     style.spacing.window_margin = egui::Margin::same(8.0);
+    style.spacing.button_padding = egui::vec2(4.0, 2.0);
+    style.spacing.menu_margin = egui::Margin::same(4.0);
     ctx.set_style(style);
 }
 fn get_ed_ctx(

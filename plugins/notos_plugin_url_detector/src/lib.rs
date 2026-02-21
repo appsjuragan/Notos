@@ -110,7 +110,14 @@ impl NotosPlugin for UrlDetectorPlugin {
                      let url_str = url.clone();
                      std::thread::spawn(move || {
                          #[cfg(target_os = "windows")]
-                         let result = std::process::Command::new("cmd").args(["/c", "start", "", &url_str]).spawn();
+                         let result = {
+                             use std::os::windows::process::CommandExt;
+                             const CREATE_NO_WINDOW: u32 = 0x08000000;
+                             std::process::Command::new("cmd")
+                                 .creation_flags(CREATE_NO_WINDOW)
+                                 .args(["/c", "start", "", &url_str])
+                                 .spawn()
+                         };
                          
                          #[cfg(target_os = "macos")]
                          let result = std::process::Command::new("open").arg(&url_str).spawn();

@@ -1,6 +1,6 @@
 [package]
 name = "notos_plugin_url_detector"
-version = "0.1.0"
+version = "0.3.0"
 edition = "2021"
 description = "A plugin that detects URLs and opens them with the default browser when Ctrl+Click is pressed."
 
