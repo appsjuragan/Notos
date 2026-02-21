@@ -107,9 +107,21 @@ impl NotosPlugin for UrlDetectorPlugin {
             
             if let Some(idx) = target_idx {
                  if let Some((_, _, url)) = Self::find_url_range_at_index(ed.content, idx) {
-                     if let Err(e) = webbrowser::open(&url) {
-                         eprintln!("Failed to open URL '{}': {}", url, e);
-                     }
+                     let url_str = url.clone();
+                     std::thread::spawn(move || {
+                         #[cfg(target_os = "windows")]
+                         let result = std::process::Command::new("cmd").args(["/c", "start", "", &url_str]).spawn();
+                         
+                         #[cfg(target_os = "macos")]
+                         let result = std::process::Command::new("open").arg(&url_str).spawn();
+                         
+                         #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+                         let result = std::process::Command::new("xdg-open").arg(&url_str).spawn();
+                         
+                         if let Err(e) = result {
+                             eprintln!("Failed to open URL '{}': {}", url_str, e);
+                         }
+                     });
                  }
             }
         }

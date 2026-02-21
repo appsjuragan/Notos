@@ -1303,7 +1303,6 @@ checksum = "2bf50223579dc7cdcfb3bfcacf7069ff68243f8c363f62ffa99cf000a6b9c451"
 name = "notos_plugin_about"
 version = "0.2.4"
 dependencies = [
- "eframe",
  "egui",
  "log",
  "notos_sdk",
@@ -1314,18 +1313,15 @@ name = "notos_plugin_base64"
 version = "0.2.3"
 dependencies = [
  "base64",
- "eframe",
  "egui",
  "log",
  "notos_sdk",
- "serde",
 ]
 
 [[package]]
 name = "notos_plugin_json_format"
 version = "0.2.3"
 dependencies = [
- "eframe",
  "egui",
  "log",
  "notos_sdk",
@@ -1339,14 +1335,12 @@ version = "0.1.0"
 dependencies = [
  "egui",
  "notos_sdk",
- "webbrowser",
 ]
 
 [[package]]
 name = "notos_sdk"
 version = "0.3.0"
 dependencies = [
- "eframe",
  "egui",
  "log",
 ]
