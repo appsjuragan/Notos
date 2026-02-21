@@ -104,32 +104,32 @@ impl NotosPlugin for UrlDetectorPlugin {
         if ctx.input(|i| i.modifiers.ctrl && i.pointer.primary_clicked()) {
             // we will use the hovered index if available to open, falling back to selection start
             let target_idx = ed.hovered_char_idx.or_else(|| ed.selection.map(|(s, _)| s));
-            
+
             if let Some(idx) = target_idx {
-                 if let Some((_, _, url)) = Self::find_url_range_at_index(ed.content, idx) {
-                     let url_str = url.clone();
-                     std::thread::spawn(move || {
-                         #[cfg(target_os = "windows")]
-                         let result = {
-                             use std::os::windows::process::CommandExt;
-                             const CREATE_NO_WINDOW: u32 = 0x08000000;
-                             std::process::Command::new("cmd")
-                                 .creation_flags(CREATE_NO_WINDOW)
-                                 .args(["/c", "start", "", &url_str])
-                                 .spawn()
-                         };
-                         
-                         #[cfg(target_os = "macos")]
-                         let result = std::process::Command::new("open").arg(&url_str).spawn();
-                         
-                         #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
-                         let result = std::process::Command::new("xdg-open").arg(&url_str).spawn();
-                         
-                         if let Err(e) = result {
-                             eprintln!("Failed to open URL '{}': {}", url_str, e);
-                         }
-                     });
-                 }
+                if let Some((_, _, url)) = Self::find_url_range_at_index(ed.content, idx) {
+                    let url_str = url.clone();
+                    std::thread::spawn(move || {
+                        #[cfg(target_os = "windows")]
+                        let result = {
+                            use std::os::windows::process::CommandExt;
+                            const CREATE_NO_WINDOW: u32 = 0x08000000;
+                            std::process::Command::new("cmd")
+                                .creation_flags(CREATE_NO_WINDOW)
+                                .args(["/c", "start", "", &url_str])
+                                .spawn()
+                        };
+
+                        #[cfg(target_os = "macos")]
+                        let result = std::process::Command::new("open").arg(&url_str).spawn();
+
+                        #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+                        let result = std::process::Command::new("xdg-open").arg(&url_str).spawn();
+
+                        if let Err(e) = result {
+                            eprintln!("Failed to open URL '{}': {}", url_str, e);
+                        }
+                    });
+                }
             }
         }
 

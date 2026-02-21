@@ -1,8 +1,8 @@
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
-use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum LineEnding {
@@ -38,7 +38,9 @@ pub fn next_tab_id() -> TabId {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum Encoding {
+    #[default]
     Utf8,
     Windows1252,
     Utf16Le,
@@ -65,11 +67,6 @@ impl Encoding {
     }
 }
 
-impl Default for Encoding {
-    fn default() -> Self {
-        Encoding::Utf8
-    }
-}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EditorTab {
@@ -206,7 +203,7 @@ impl EditorTab {
 
             // Encode content to target encoding
             let (bytes, _enc, _had_errors) = self.encoding.to_encoding().encode(&content_to_save);
-            
+
             // Add BOM if needed for UTF-16
             if self.encoding == Encoding::Utf16Le {
                 file.write_all(b"\xFF\xFE")?;

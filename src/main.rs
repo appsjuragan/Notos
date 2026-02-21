@@ -23,7 +23,8 @@ fn main() -> eframe::Result<()> {
         ..Default::default()
     };
 
-    let args: Vec<String> = std::env::args().skip(1)
+    let args: Vec<String> = std::env::args()
+        .skip(1)
         .map(|a| {
             std::fs::canonicalize(&a)
                 .unwrap_or_else(|_| std::path::PathBuf::from(a))
@@ -38,41 +39,38 @@ fn main() -> eframe::Result<()> {
     let addr = format!("127.0.0.1:{}", port);
 
     match std::net::TcpListener::bind(&addr) {
-        Ok(listener) => {
-            eframe::run_native(
-                &format!("Notos Text Editor v{}", env!("CARGO_PKG_VERSION")),
-                native_options,
-                Box::new(move |cc| {
-                    let ctx = cc.egui_ctx.clone();
-                    std::thread::spawn(move || {
-                        for stream in listener.incoming() {
-                            if let Ok(mut stream) = stream {
-                                let mut buffer = String::new();
-                                use std::io::Read;
-                                if stream.read_to_string(&mut buffer).is_ok() {
-                                    let paths: Vec<String> = buffer
-                                        .split('\n')
-                                        .filter(|s| !s.is_empty())
-                                        .map(|s| s.to_string())
-                                        .collect();
-                                    for path in paths {
-                                        let _ = tx.send(path);
-                                    }
-                                    ctx.request_repaint();
-                                }
+        Ok(listener) => eframe::run_native(
+            &format!("Notos Text Editor v{}", env!("CARGO_PKG_VERSION")),
+            native_options,
+            Box::new(move |cc| {
+                let ctx = cc.egui_ctx.clone();
+                std::thread::spawn(move || {
+                    for mut stream in listener.incoming().flatten() {
+                        let mut buffer = String::new();
+                        use std::io::Read;
+                        if stream.read_to_string(&mut buffer).is_ok() {
+                            let paths: Vec<String> = buffer
+                                .split('\n')
+                                .filter(|s| !s.is_empty())
+                                .map(|s| s.to_string())
+                                .collect();
+                            for path in paths {
+                                let _ = tx.send(path);
                             }
+                            ctx.request_repaint();
                         }
-                    });
-                    Ok(Box::new(NotosApp::new(cc, args, rx)))
-                }),
-            )
-        }
+                    }
+                });
+                Ok(Box::new(NotosApp::new(cc, args, rx)))
+            }),
+        ),
         Err(_) => {
             // Another instance is likely running, send the paths and exit
             if !args.is_empty() {
                 use std::io::Write;
                 if let Ok(mut stream) = std::net::TcpStream::connect(&addr) {
-                    let abs_paths: Vec<String> = args.iter()
+                    let abs_paths: Vec<String> = args
+                        .iter()
                         .map(|a| {
                             std::fs::canonicalize(a)
                                 .unwrap_or_else(|_| std::path::PathBuf::from(a))
