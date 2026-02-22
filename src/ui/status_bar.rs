@@ -39,14 +39,24 @@ pub fn status_bar(
                     ui.horizontal(|ui| {
                         let is_active = Some(t.id) == active_tab_id;
 
-                        let label_width = ui.available_width() - 30.0;
-                        ui.allocate_ui(egui::vec2(label_width, ui.available_height()), |ui| {
-                            if ui.selectable_label(is_active, &t.title).clicked() {
-                                action = Some(StatusBarAction::SwitchTab(t.id));
-                                ui.close_menu();
-                            }
-                        });
+                        // Title takes most of the width
+                        let label_width = ui.available_width() - 32.0;
+                        let text = if is_active {
+                            egui::RichText::new(&t.title).color(egui::Color32::WHITE)
+                        } else {
+                            egui::RichText::new(&t.title)
+                        };
 
+                        let res = ui.add_sized(
+                            egui::vec2(label_width, 22.0),
+                            egui::SelectableLabel::new(is_active, text),
+                        );
+                        if res.clicked() {
+                            action = Some(StatusBarAction::SwitchTab(t.id));
+                            ui.close_menu();
+                        }
+
+                        // Close button on the right
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui.button("x").clicked() {
                                 action = Some(StatusBarAction::CloseTab(t.id));

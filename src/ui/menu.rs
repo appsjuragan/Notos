@@ -41,20 +41,34 @@ pub fn menu_bar(
     let mut plugin_action = PluginAction::None;
 
     egui::menu::bar(ui, |ui| {
+        ui.spacing_mut().button_padding = egui::vec2(6.0, 2.0);
+        ui.spacing_mut().interact_size.y = 20.0; // Fixed height for all menu buttons
         ui.menu_button("File", |ui| {
-            if ui.button("📄 New Tab").clicked() {
+            if ui
+                .add(egui::Button::new("📄 New Tab").shortcut_text("Ctrl+T"))
+                .clicked()
+            {
                 action = Some(MenuAction::NewTab);
                 ui.close_menu();
             }
-            if ui.button("📂 Open").clicked() {
+            if ui
+                .add(egui::Button::new("📂 Open").shortcut_text("Ctrl+O"))
+                .clicked()
+            {
                 action = Some(MenuAction::Open);
                 ui.close_menu();
             }
-            if ui.button("💾 Save").clicked() {
+            if ui
+                .add(egui::Button::new("💾 Save").shortcut_text("Ctrl+S"))
+                .clicked()
+            {
                 action = Some(MenuAction::Save);
                 ui.close_menu();
             }
-            if ui.button("💾 Save As").clicked() {
+            if ui
+                .add(egui::Button::new("💾 Save As").shortcut_text("Ctrl+Shift+S"))
+                .clicked()
+            {
                 action = Some(MenuAction::SaveAs);
                 ui.close_menu();
             }
@@ -93,24 +107,39 @@ pub fn menu_bar(
         });
 
         ui.menu_button("Edit", |ui| {
-            if ui.button("↩ Undo").clicked() {
+            if ui
+                .add(egui::Button::new("↩ Undo").shortcut_text("Ctrl+Z"))
+                .clicked()
+            {
                 action = Some(MenuAction::Undo);
                 ui.close_menu();
             }
-            if ui.button("↪ Redo").clicked() {
+            if ui
+                .add(egui::Button::new("↪ Redo").shortcut_text("Ctrl+Y"))
+                .clicked()
+            {
                 action = Some(MenuAction::Redo);
                 ui.close_menu();
             }
             ui.separator();
-            if ui.button("🔍 Find").clicked() {
+            if ui
+                .add(egui::Button::new("🔍 Find").shortcut_text("Ctrl+F"))
+                .clicked()
+            {
                 action = Some(MenuAction::Find);
                 ui.close_menu();
             }
-            if ui.button("🔄 Replace").clicked() {
+            if ui
+                .add(egui::Button::new("🔄 Replace").shortcut_text("Ctrl+H"))
+                .clicked()
+            {
                 action = Some(MenuAction::Replace);
                 ui.close_menu();
             }
-            if ui.button("🎯 Go To...").clicked() {
+            if ui
+                .add(egui::Button::new("🎯 Go To...").shortcut_text("Ctrl+G"))
+                .clicked()
+            {
                 action = Some(MenuAction::GotoLine);
                 ui.close_menu();
             }
@@ -149,17 +178,24 @@ pub fn menu_bar(
             }
             ui.separator();
             ui.menu_button("🔠 Change Font", |ui| {
-                if ui
-                    .selectable_label(editor_font_family == "Monospace", "⌨ Monospace")
-                    .clicked()
-                {
+                let is_mono = editor_font_family == "Monospace";
+                let mono_text = if is_mono {
+                    egui::RichText::new("⌨ Monospace").color(egui::Color32::WHITE)
+                } else {
+                    egui::RichText::new("⌨ Monospace")
+                };
+                if ui.selectable_label(is_mono, mono_text).clicked() {
                     action = Some(MenuAction::ChangeFont("Monospace".to_string()));
                     ui.close_menu();
                 }
-                if ui
-                    .selectable_label(editor_font_family == "Proportional", "🎨 Proportional")
-                    .clicked()
-                {
+
+                let is_prop = editor_font_family == "Proportional";
+                let prop_text = if is_prop {
+                    egui::RichText::new("🎨 Proportional").color(egui::Color32::WHITE)
+                } else {
+                    egui::RichText::new("🎨 Proportional")
+                };
+                if ui.selectable_label(is_prop, prop_text).clicked() {
                     action = Some(MenuAction::ChangeFont("Proportional".to_string()));
                     ui.close_menu();
                 }
@@ -167,10 +203,13 @@ pub fn menu_bar(
                 if !custom_fonts.is_empty() {
                     ui.separator();
                     for name in custom_fonts.keys() {
-                        if ui
-                            .selectable_label(editor_font_family == name, format!("🔠 {}", name))
-                            .clicked()
-                        {
+                        let is_active = editor_font_family == name;
+                        let text = if is_active {
+                            egui::RichText::new(format!("🔠 {}", name)).color(egui::Color32::WHITE)
+                        } else {
+                            egui::RichText::new(format!("🔠 {}", name))
+                        };
+                        if ui.selectable_label(is_active, text).clicked() {
                             action = Some(MenuAction::ChangeFont(name.clone()));
                             ui.close_menu();
                         }
@@ -185,7 +224,7 @@ pub fn menu_bar(
             });
         });
 
-        ui.menu_button("🔌 Plugins", |ui| {
+        ui.menu_button("Plugins", |ui| {
             let p_action = plugin_manager.plugins_menu_ui(ui, ed_ctx);
             if p_action != PluginAction::None {
                 plugin_action = p_action;

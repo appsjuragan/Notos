@@ -66,9 +66,7 @@ impl NotosApp {
     pub(crate) fn handle_menu_action(&mut self, action: MenuAction, ctx: &egui::Context) {
         match action {
             MenuAction::NewTab => {
-                let tab = EditorTab::default();
-                self.active_tab_id = Some(tab.id);
-                self.tabs.push(tab);
+                self.new_tab();
             }
             MenuAction::Open => self.open_file(),
             MenuAction::OpenRecent(path) => {
@@ -184,11 +182,17 @@ impl NotosApp {
         }
     }
 
+    pub fn new_tab(&mut self) {
+        let tab = EditorTab::default();
+        self.active_tab_id = Some(tab.id);
+        self.tabs.push(tab);
+    }
+
     pub(crate) fn handle_shortcuts(&mut self, ctx: &egui::Context) {
-        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::N)) {
-            let tab = EditorTab::default();
-            self.active_tab_id = Some(tab.id);
-            self.tabs.push(tab);
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::N))
+            || ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::T))
+        {
+            self.new_tab();
         }
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::O)) {
             self.open_file();
@@ -205,6 +209,12 @@ impl NotosApp {
             if let Some(id) = self.active_tab_id {
                 self.close_tab(id);
             }
+        }
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::Z)) {
+            self.handle_menu_action(MenuAction::Undo, ctx);
+        }
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::Y)) {
+            self.handle_menu_action(MenuAction::Redo, ctx);
         }
 
         // Zoom Shortcuts

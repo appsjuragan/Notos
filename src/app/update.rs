@@ -132,7 +132,11 @@ impl eframe::App for NotosApp {
 
         // Top Panel: Menu and Tabs
         egui::TopBottomPanel::top("top_panel")
-            .frame(egui::Frame::default().fill(panel_bg).inner_margin(8.0))
+            .frame(
+                egui::Frame::default()
+                    .fill(panel_bg)
+                    .inner_margin(egui::Margin::symmetric(8.0, 2.0)),
+            )
             .show(ctx, |ui| {
                 let ed_ctx = get_ed_ctx(tabs, active_tab_id, self.hovered_char_idx);
                 let (m, p) = crate::ui::menu_bar(

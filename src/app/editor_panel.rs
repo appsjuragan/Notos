@@ -38,7 +38,7 @@ impl NotosApp {
 
             let mut deferred_action = DeferredAction::None;
 
-            egui::ScrollArea::vertical().show(ui, |ui| {
+            egui::ScrollArea::vertical().id_salt(tab.id).show(ui, |ui| {
                 let margin = 4.0;
                 let family = if self.editor_font_family == "Monospace" {
                     egui::FontFamily::Monospace
@@ -71,6 +71,7 @@ impl NotosApp {
                 };
 
                 let mut text_edit_res = None;
+                let mut text_edit_output = None;
                 let mut galley_to_draw: Option<std::sync::Arc<egui::Galley>> = None;
 
                 ui.horizontal(|ui| {
@@ -86,6 +87,8 @@ impl NotosApp {
                         let base_format = egui::TextFormat {
                             font_id: font_id.clone(),
                             color: ui.visuals().widgets.noninteractive.text_color(),
+                            line_height: Some(font_id.size * 1.45),
+                            valign: egui::Align::Center,
                             ..Default::default()
                         };
 
@@ -113,9 +116,16 @@ impl NotosApp {
                     };
 
                     egui::Frame::none().fill(editor_bg).show(ui, |ui| {
-                        let mut force_scroll = false;
+                        let mut force_scroll_requested = false;
+                        let mut force_scroll_align = None;
                         if tab.scroll_to_cursor {
-                            force_scroll = true;
+                            force_scroll_requested = true;
+                            if tab.center_cursor {
+                                force_scroll_align = Some(egui::Align::Center);
+                            }
+                            tab.scroll_to_cursor = false;
+                            tab.center_cursor = false;
+
                             let id = egui::Id::new("editor").with(tab.id);
                             ui.memory_mut(|mem| mem.request_focus(id));
                             let mut state =
@@ -129,7 +139,6 @@ impl NotosApp {
                                     )));
                             }
                             egui::TextEdit::store_state(ui.ctx(), id, state);
-                            tab.scroll_to_cursor = false;
                         }
 
                         let text_edit = egui::TextEdit::multiline(&mut tab.content)
@@ -138,7 +147,7 @@ impl NotosApp {
                             .frame(false)
                             .code_editor()
                             .lock_focus(true)
-                            .margin(egui::Margin::same(margin))
+                            .margin(egui::Margin::symmetric(10.0, 10.0))
                             .layouter(&mut layouter)
                             .desired_width(if word_wrap {
                                 ui.available_width()
@@ -147,11 +156,8 @@ impl NotosApp {
                             });
 
                         let output = text_edit.show(ui);
-                        let res = output.response;
 
                         galley_to_draw = Some(output.galley.clone());
-
-                        text_edit_res = Some(res.clone());
 
                         // Render Find Highlight (Undermost Layer) if Dialog Active
                         if self.find_dialog.open && !self.find_dialog.query.is_empty() {
@@ -243,18 +249,22 @@ impl NotosApp {
                             }
                         }
 
-                        if force_scroll {
+                        if force_scroll_requested {
                             if let Some(r) = output.cursor_range {
                                 let p = output.galley.pos_from_pcursor(r.primary.pcursor);
                                 let rect = egui::Rect::from_min_max(
-                                    res.rect.min + egui::vec2(margin, margin) + p.min.to_vec2(),
-                                    res.rect.min + egui::vec2(margin, margin) + p.max.to_vec2(),
+                                    output.response.rect.min
+                                        + egui::vec2(margin, margin)
+                                        + p.min.to_vec2(),
+                                    output.response.rect.min
+                                        + egui::vec2(margin, margin)
+                                        + p.max.to_vec2(),
                                 );
-                                ui.scroll_to_rect(rect, Some(egui::Align::Center));
+                                ui.scroll_to_rect(rect, force_scroll_align);
                             }
                         }
 
-                        if res.changed() {
+                        if output.response.changed() {
                             content_changed = true;
                             tab.is_dirty = true;
                             tab_changed_idx = Some(idx);
@@ -262,9 +272,10 @@ impl NotosApp {
 
                         // Update hover index based on mouse position
                         let mut hovered_idx = None;
-                        if let Some(hover_pos) = res.hover_pos() {
+                        if let Some(hover_pos) = output.response.hover_pos() {
                             if let Some(galley) = galley_to_draw.as_ref() {
-                                let text_pos = res.rect.min + egui::vec2(margin, margin);
+                                let text_pos =
+                                    output.response.rect.min + egui::vec2(margin, margin);
                                 let relative_pos = hover_pos - text_pos;
                                 let cursor = galley.cursor_from_pos(relative_pos);
                                 let paragraph = cursor.pcursor.paragraph;
@@ -284,12 +295,14 @@ impl NotosApp {
 
                         hovered_idx_out = hovered_idx;
 
-                        if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), res.id) {
+                        if let Some(mut state) =
+                            egui::TextEdit::load_state(ui.ctx(), output.response.id)
+                        {
                             if let Some(range) = state.cursor.char_range() {
                                 if !ui.input(|i| {
                                     i.pointer.secondary_down() || i.pointer.secondary_clicked()
                                 }) {
-                                    if res.has_focus() {
+                                    if output.response.has_focus() {
                                         tab.cursor_range =
                                             Some((range.primary.index, range.secondary.index));
                                     }
@@ -303,7 +316,7 @@ impl NotosApp {
                                         ));
                                         egui::TextEdit::store_state(
                                             ui.ctx(),
-                                            res.id,
+                                            output.response.id,
                                             state.clone(),
                                         );
                                     }
@@ -327,44 +340,51 @@ impl NotosApp {
                                 new_cursor_pos = Some((line, col));
                             }
                         }
+
+                        text_edit_res = Some(output.response.clone());
+                        text_edit_output = Some(output);
                     });
 
                     // Line numbers rendering
                     if self.show_line_numbers {
-                        if let (Some(res), Some(galley)) = (text_edit_res.as_ref(), galley_to_draw)
-                        {
+                        if let Some(output) = text_edit_output.as_ref() {
+                            let galley = &output.galley;
+                            let galley_pos = output.galley_pos;
                             let painter = ui.painter();
                             let mut logical_line = 1;
                             let mut is_start_of_logical_line = true;
 
-                            let line_num_rect = egui::Rect::from_min_max(
+                            // Gutter background
+                            let gutter_rect = egui::Rect::from_min_max(
+                                egui::pos2(ui.min_rect().min.x, ui.min_rect().min.y),
                                 egui::pos2(
-                                    res.rect.min.x - line_number_width - 8.0,
-                                    res.rect.min.y,
+                                    galley_pos.x - 10.0, // A bit of gap before text
+                                    ui.min_rect().max.y,
                                 ),
-                                egui::pos2(res.rect.min.x, res.rect.max.y),
                             );
                             painter.rect_filled(
-                                line_num_rect,
+                                gutter_rect,
                                 0.0,
                                 ui.visuals().widgets.noninteractive.bg_fill,
                             );
 
+                            // Gutter separator line
                             painter.line_segment(
                                 [
-                                    egui::pos2(res.rect.min.x - 2.0, res.rect.min.y),
-                                    egui::pos2(res.rect.min.x - 2.0, res.rect.max.y),
+                                    egui::pos2(galley_pos.x - 10.0, ui.min_rect().min.y),
+                                    egui::pos2(galley_pos.x - 10.0, ui.min_rect().max.y),
                                 ],
                                 ui.visuals().widgets.noninteractive.bg_stroke,
                             );
 
                             for row in &galley.rows {
                                 if is_start_of_logical_line {
-                                    let row_y = res.rect.min.y + margin + row.rect.min.y;
-                                    let pos = egui::pos2(res.rect.min.x - 8.0, row_y);
+                                    let row_center_y = galley_pos.y + row.rect.center().y;
+                                    let pos = egui::pos2(galley_pos.x - 20.0, row_center_y);
+
                                     painter.text(
                                         pos,
-                                        egui::Align2::RIGHT_TOP,
+                                        egui::Align2::RIGHT_CENTER,
                                         logical_line.to_string(),
                                         font_id.clone(),
                                         ui.visuals().weak_text_color(),

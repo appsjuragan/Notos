@@ -19,64 +19,97 @@ impl FindDialog {
         if open {
             let title = if self.replace_mode { "Replace" } else { "Find" };
             egui::Window::new(title)
-                .id(egui::Id::new("find_replace_dialog_v3"))
+                .id(egui::Id::new("find_replace_dialog_v4"))
                 .open(&mut open)
-                .default_width(320.0)
+                .resizable(false)
+                .collapsible(false)
+                .default_size([320.0, 100.0])
                 .show(ctx, |ui| {
-                    ui.horizontal(|ui| {
-                        let res = ui.text_edit_singleline(&mut self.query);
-                        if self.just_opened {
-                            res.request_focus();
-                            self.just_opened = false;
-                        }
+                    egui::Grid::new("find_replace_grid")
+                        .num_columns(2)
+                        .spacing([8.0, 4.0])
+                        .show(ui, |ui| {
+                            ui.label("Find:");
+                            let mut res = None;
+                            egui::Frame::none()
+                                .fill(ui.visuals().widgets.inactive.bg_fill)
+                                .stroke(ui.visuals().widgets.inactive.bg_stroke)
+                                .rounding(ui.visuals().widgets.inactive.rounding)
+                                .inner_margin(2.0)
+                                .show(ui, |ui| {
+                                    res = Some(
+                                        ui.add(
+                                            egui::TextEdit::singleline(&mut self.query)
+                                                .frame(false)
+                                                .desired_width(f32::INFINITY),
+                                        ),
+                                    );
+                                });
 
-                        if res.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                            find_next_clicked = true;
-                        }
-                    });
+                            if let Some(res) = res {
+                                if self.just_opened {
+                                    res.request_focus();
+                                    self.just_opened = false;
+                                }
 
-                    if self.replace_mode {
-                        ui.horizontal(|ui| {
-                            ui.label("Replace with:");
-                            ui.text_edit_singleline(&mut self.replace_with);
+                                if res.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                                {
+                                    find_next_clicked = true;
+                                }
+                            }
+                            ui.end_row();
+
+                            if self.replace_mode {
+                                ui.label("Replace:");
+                                egui::Frame::none()
+                                    .fill(ui.visuals().widgets.inactive.bg_fill)
+                                    .stroke(ui.visuals().widgets.inactive.bg_stroke)
+                                    .rounding(ui.visuals().widgets.inactive.rounding)
+                                    .inner_margin(2.0)
+                                    .show(ui, |ui| {
+                                        ui.add(
+                                            egui::TextEdit::singleline(&mut self.replace_with)
+                                                .frame(false)
+                                                .desired_width(f32::INFINITY),
+                                        );
+                                    });
+                                ui.end_row();
+                            }
                         });
-                    }
 
                     ui.checkbox(&mut self.match_case, "Match case");
 
-                    ui.with_layout(
-                        egui::Layout::left_to_right(egui::Align::Min)
-                            .with_main_align(egui::Align::Center),
-                        |ui| {
-                            let button_size = egui::vec2(80.0, 24.0);
+                    ui.add_space(8.0);
 
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let button_size = egui::vec2(80.0, 24.0);
+
+                        if self.replace_mode {
                             if ui
-                                .add_sized(button_size, egui::Button::new("Find Next"))
+                                .add_sized(button_size, egui::Button::new("Replace All"))
                                 .clicked()
                             {
-                                find_next_clicked = true;
+                                self.perform_replace_all(active_tab.as_deref_mut());
                             }
+                            if ui
+                                .add_sized(button_size, egui::Button::new("Replace"))
+                                .clicked()
+                            {
+                                self.perform_replace(
+                                    ctx,
+                                    active_tab.as_deref_mut(),
+                                    &mut find_next_clicked,
+                                );
+                            }
+                        }
 
-                            if self.replace_mode {
-                                if ui
-                                    .add_sized(button_size, egui::Button::new("Replace"))
-                                    .clicked()
-                                {
-                                    self.perform_replace(
-                                        ctx,
-                                        active_tab.as_deref_mut(),
-                                        &mut find_next_clicked,
-                                    );
-                                }
-                                if ui
-                                    .add_sized(button_size, egui::Button::new("Replace All"))
-                                    .clicked()
-                                {
-                                    self.perform_replace_all(active_tab.as_deref_mut());
-                                }
-                            }
-                        },
-                    );
+                        if ui
+                            .add_sized(button_size, egui::Button::new("Find Next"))
+                            .clicked()
+                        {
+                            find_next_clicked = true;
+                        }
+                    });
                 });
         }
         self.open = open;
@@ -136,6 +169,7 @@ impl FindDialog {
                                 egui::TextEdit::store_state(ctx, id, state);
                                 tab.cursor_range = Some((new_char, new_char));
                                 tab.scroll_to_cursor = true;
+                                tab.center_cursor = true;
                                 ctx.request_repaint();
                             }
                         }
@@ -207,6 +241,7 @@ impl FindDialog {
                         // Store char counts so editor_panel uses consistent units
                         tab.cursor_range = Some((char_idx, char_end));
                         tab.scroll_to_cursor = true;
+                        tab.center_cursor = true;
                         ctx.request_repaint();
                     }
                 }
@@ -227,36 +262,56 @@ impl GotoLineDialog {
         let mut goto_clicked = false;
         if goto_open {
             egui::Window::new("Go To Line")
-                .id(egui::Id::new("gotoline_dialog_v3"))
+                .id(egui::Id::new("gotoline_dialog_v4"))
                 .open(&mut goto_open)
                 .collapsible(false)
                 .resizable(false)
-                .default_width(220.0)
+                .default_size([220.0, 80.0])
                 .show(ctx, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label("Line number:");
-                        let res = ui.text_edit_singleline(&mut self.line_str);
-                        if self.open && !goto_clicked {
-                            res.request_focus();
-                        }
-                        if res.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    egui::Grid::new("gotoline_grid")
+                        .num_columns(2)
+                        .spacing([8.0, 4.0])
+                        .show(ui, |ui| {
+                            ui.label("Line number:");
+                            let mut res = None;
+                            egui::Frame::none()
+                                .fill(ui.visuals().widgets.inactive.bg_fill)
+                                .stroke(ui.visuals().widgets.inactive.bg_stroke)
+                                .rounding(ui.visuals().widgets.inactive.rounding)
+                                .inner_margin(2.0)
+                                .show(ui, |ui| {
+                                    res = Some(
+                                        ui.add(
+                                            egui::TextEdit::singleline(&mut self.line_str)
+                                                .frame(false)
+                                                .desired_width(f32::INFINITY),
+                                        ),
+                                    );
+                                });
+
+                            if let Some(res) = res {
+                                if self.open && !goto_clicked {
+                                    res.request_focus();
+                                }
+                                if res.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                                {
+                                    goto_clicked = true;
+                                }
+                            }
+                            ui.end_row();
+                        });
+
+                    ui.add_space(4.0);
+
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let button_size = egui::vec2(80.0, 24.0);
+                        if ui
+                            .add_sized(button_size, egui::Button::new("Go To"))
+                            .clicked()
+                        {
                             goto_clicked = true;
                         }
                     });
-
-                    ui.with_layout(
-                        egui::Layout::left_to_right(egui::Align::Min)
-                            .with_main_align(egui::Align::Center),
-                        |ui| {
-                            let button_size = egui::vec2(80.0, 24.0);
-                            if ui
-                                .add_sized(button_size, egui::Button::new("Go To"))
-                                .clicked()
-                            {
-                                goto_clicked = true;
-                            }
-                        },
-                    );
                 });
         }
         self.open = goto_open;
@@ -298,6 +353,7 @@ impl GotoLineDialog {
                         tab.cursor_range = Some((char_idx, char_idx));
 
                         tab.scroll_to_cursor = true;
+                        tab.center_cursor = true;
                         ctx.request_repaint();
 
                         self.open = false;
@@ -344,11 +400,11 @@ impl CloseConfirmationDialog {
             };
 
             egui::Window::new("Save Changes?")
-                .id(egui::Id::new("close_confirmation_dialog_v3"))
+                .id(egui::Id::new("close_confirmation_dialog_v4"))
                 .collapsible(false)
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
-                .default_width(320.0)
+                .default_size([320.0, 120.0])
                 .show(ctx, |ui| {
                     ui.label(format!("Do you want to save changes to \"{}\"?", tab_title));
                     ui.add_space(12.0);

@@ -37,8 +37,11 @@ pub fn next_tab_id() -> TabId {
     TabId(TAB_ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
-#[derive(Default)]
+pub fn ensure_tab_id_at_least(id: usize) {
+    TAB_ID_COUNTER.fetch_max(id + 1, std::sync::atomic::Ordering::Relaxed);
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, Default)]
 pub enum Encoding {
     #[default]
     Utf8,
@@ -67,7 +70,6 @@ impl Encoding {
     }
 }
 
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EditorTab {
     pub id: TabId,
@@ -85,6 +87,8 @@ pub struct EditorTab {
     pub encoding: Encoding,
     #[serde(default)]
     pub scroll_to_cursor: bool,
+    #[serde(default)]
+    pub center_cursor: bool,
     #[serde(default)]
     pub cursor_range: Option<(usize, usize)>,
 }
@@ -114,7 +118,8 @@ impl Default for EditorTab {
             line_ending: LineEnding::Lf,
             encoding: Encoding::Utf8,
             scroll_to_cursor: false,
-            cursor_range: None,
+            center_cursor: false,
+            cursor_range: Some((0, 0)),
         }
     }
 }
@@ -142,7 +147,8 @@ impl EditorTab {
             line_ending: LineEnding::Lf,
             encoding: Encoding::Utf8,
             scroll_to_cursor: false,
-            cursor_range: None,
+            center_cursor: false,
+            cursor_range: Some((0, 0)),
         }
     }
 

@@ -104,8 +104,9 @@ impl NotosApp {
                 app.tabs.push(tab);
             }
 
-            // Mark all tabs to restore cursor
+            // Mark all tabs to restore cursor and sync ID counter
             for tab in &mut app.tabs {
+                crate::editor::ensure_tab_id_at_least(tab.id.0);
                 tab.scroll_to_cursor = true;
             }
         } else {
@@ -125,10 +126,9 @@ impl NotosApp {
         let mut opened_any = false;
         for arg in args {
             let path = std::path::PathBuf::from(arg);
-            if path.exists() && path.is_file()
-                && app.open_path(path) {
-                    opened_any = true;
-                }
+            if path.exists() && path.is_file() && app.open_path(path) {
+                opened_any = true;
+            }
         }
 
         // If we opened files from args and we have the default empty untitled tab, remove it

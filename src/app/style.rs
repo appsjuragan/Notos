@@ -158,15 +158,21 @@ pub fn setup_custom_style(ctx: &egui::Context, dark_mode: bool) {
         visuals.widgets.hovered.fg_stroke.color = egui::Color32::WHITE;
         visuals.widgets.active.fg_stroke.color = egui::Color32::WHITE;
 
-        visuals.window_shadow.color = egui::Color32::from_black_alpha(100);
+        visuals.selection.bg_fill = egui::Color32::from_rgb(34, 68, 136); // Rich dark blue for dark mode
+        visuals.selection.stroke = egui::Stroke::NONE;
     } else {
         visuals.widgets.noninteractive.bg_fill = egui::Color32::WHITE;
+        visuals.widgets.noninteractive.bg_stroke.color = egui::Color32::from_gray(180);
+
+        visuals.widgets.inactive.bg_fill = egui::Color32::from_gray(248);
+        visuals.widgets.inactive.bg_stroke.color = egui::Color32::from_gray(200);
+
         visuals.window_fill = egui::Color32::WHITE;
         visuals.panel_fill = egui::Color32::WHITE;
         visuals.extreme_bg_color = egui::Color32::WHITE;
 
-        visuals.selection.bg_fill = egui::Color32::from_rgb(202, 227, 255);
-        visuals.selection.stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(0, 120, 215));
+        visuals.selection.bg_fill = egui::Color32::from_rgb(153, 201, 255); // Darker, more visible blue for light mode
+        visuals.selection.stroke = egui::Stroke::NONE;
     }
 
     ctx.set_visuals(visuals.clone());
