@@ -39,7 +39,7 @@ impl NotosApp {
             let mut deferred_action = DeferredAction::None;
 
             egui::ScrollArea::vertical().id_salt(tab.id).show(ui, |ui| {
-                let margin = 4.0;
+                let margin = 10.0;
                 let family = if self.editor_font_family == "Monospace" {
                     egui::FontFamily::Monospace
                 } else if self.editor_font_family == "Proportional" {
@@ -261,6 +261,24 @@ impl NotosApp {
                                         + p.max.to_vec2(),
                                 );
                                 ui.scroll_to_rect(rect, force_scroll_align);
+                            }
+                        }
+
+                        // Auto-scroll when dragging selection outside the visible area
+                        if output.response.dragged_by(egui::PointerButton::Primary) {
+                            if let Some(pos) = ui.input(|i| i.pointer.interact_pos()) {
+                                let clip_rect = ui.clip_rect();
+                                let mut scroll_delta = 0.0;
+                                if pos.y < clip_rect.min.y {
+                                    scroll_delta = (clip_rect.min.y - pos.y).min(20.0);
+                                } else if pos.y > clip_rect.max.y {
+                                    scroll_delta = (clip_rect.max.y - pos.y).max(-20.0);
+                                }
+
+                                if scroll_delta != 0.0 {
+                                    ui.scroll_with_delta(egui::vec2(0.0, scroll_delta));
+                                    ui.ctx().request_repaint();
+                                }
                             }
                         }
 

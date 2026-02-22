@@ -109,14 +109,12 @@ pub fn tab_bar(
                                                                 egui::Color32::from_rgb(200, 0, 0)
                                                                 // Hover: bright red
                                                             }
+                                                        } else if ui.visuals().dark_mode {
+                                                            egui::Color32::from_rgb(180, 50, 50)
+                                                        // Dark mode: light maroon/muted red
                                                         } else {
-                                                            if ui.visuals().dark_mode {
-                                                                egui::Color32::from_rgb(180, 50, 50)
-                                                            // Dark mode: light maroon/muted red
-                                                            } else {
-                                                                egui::Color32::from_rgb(128, 0, 0)
-                                                                // Light mode: Maroon
-                                                            }
+                                                            egui::Color32::from_rgb(128, 0, 0)
+                                                            // Light mode: Maroon
                                                         };
 
                                                         let close_btn = egui::Button::new(
