@@ -55,8 +55,15 @@ impl eframe::App for NotosApp {
             self.last_session_save = std::time::Instant::now();
         }
 
-        // Only rebuild visuals when dark_mode actually changes
-        if self.prev_dark_mode != self.dark_mode {
+        // Only rebuild visuals when dark_mode actually changes OR when eframe overrides our style
+        let current_panel_fill = ctx.style().visuals.panel_fill;
+        let expected_panel_fill = if self.dark_mode {
+            egui::Color32::from_gray(38)
+        } else {
+            egui::Color32::WHITE
+        };
+        
+        if self.prev_dark_mode != self.dark_mode || current_panel_fill != expected_panel_fill {
             setup_custom_style(ctx, self.dark_mode);
             self.prev_dark_mode = self.dark_mode;
         }

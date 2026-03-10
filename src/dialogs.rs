@@ -9,6 +9,7 @@ pub struct FindDialog {
     pub match_case: bool,
     pub replace_mode: bool,
     pub just_opened: bool,
+    pub cached_lowercase: Option<(usize, usize, String)>,
 }
 
 impl FindDialog {

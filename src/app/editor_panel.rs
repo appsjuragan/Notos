@@ -169,14 +169,23 @@ impl NotosApp {
                             let mut visible_count = 0usize;
                             const MAX_VISIBLE_HIGHLIGHTS: usize = 1000;
 
-                            // Pre-compute lowercase only once if needed
-                            let (search_text, search_query): (std::borrow::Cow<str>, std::borrow::Cow<str>) = if match_case {
-                                (std::borrow::Cow::Borrowed(text), std::borrow::Cow::Borrowed(query))
+                            // Use cache for case-insensitive search to prevent 60-FPS huge allocations (fixes OOM issues on >1MB files)
+                            let query_lower = query.to_lowercase();
+                            let search_query: &str = if match_case { query } else { &query_lower };
+                            let search_text: &str = if match_case {
+                                text
                             } else {
-                                (std::borrow::Cow::Owned(text.to_lowercase()), std::borrow::Cow::Owned(query.to_lowercase()))
+                                let rebuild = match &self.find_dialog.cached_lowercase {
+                                    Some((id, len, _)) => *id != tab.id.0 || *len != text.len(),
+                                    None => true,
+                                };
+                                if rebuild {
+                                    self.find_dialog.cached_lowercase = Some((tab.id.0, text.len(), text.to_lowercase()));
+                                }
+                                self.find_dialog.cached_lowercase.as_ref().unwrap().2.as_str()
                             };
 
-                            while let Some(idx) = search_text[last_idx..].find(search_query.as_ref()) {
+                            while let Some(idx) = search_text[last_idx..].find(search_query) {
                                 if visible_count >= MAX_VISIBLE_HIGHLIGHTS { break; }
 
                                 let start = last_idx + idx;
@@ -188,7 +197,7 @@ impl NotosApp {
                                 }
 
                                 // For case-insensitive, verify the original text match
-                                if !match_case && text[start..end].to_lowercase() != search_query.as_ref() {
+                                if !match_case && text[start..end].to_lowercase() != search_query {
                                     continue;
                                 }
 
