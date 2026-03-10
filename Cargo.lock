@@ -1949,10 +1949,12 @@ name = "rust-notos"
 version = "0.3.1"
 dependencies = [
  "arboard",
+ "base64",
  "chrono",
  "eframe",
  "egui",
  "encoding_rs",
+ "flate2",
  "image",
  "libloading",
  "log",

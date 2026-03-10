@@ -32,6 +32,7 @@ pub struct NotosApp {
     ipc_receiver: std::sync::mpsc::Receiver<String>,
     next_underline: Option<(usize, usize)>,
     hovered_char_idx: Option<usize>,
+    last_session_save: std::time::Instant,
 }
 
 impl NotosApp {
@@ -61,6 +62,7 @@ impl NotosApp {
             ipc_receiver: rx,
             next_underline: None,
             hovered_char_idx: None,
+            last_session_save: std::time::Instant::now(),
         };
 
         if let Some(session) = SessionState::load() {

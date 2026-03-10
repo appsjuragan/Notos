@@ -20,6 +20,24 @@ impl eframe::App for NotosApp {
             }
         }
 
+        // Periodic session save (every 30 seconds)
+        if self.last_session_save.elapsed() >= std::time::Duration::from_secs(30) {
+            if let Err(e) = SessionState::save(
+                &self.tabs,
+                self.active_tab_id,
+                self.word_wrap,
+                self.show_line_numbers,
+                self.dark_mode,
+                self.editor_font_size,
+                &self.editor_font_family,
+                &self.custom_fonts,
+                &self.recent_files,
+            ) {
+                log::error!("Failed to save periodic session: {}", e);
+            }
+            self.last_session_save = std::time::Instant::now();
+        }
+
         // ALWAYS ensure visuals are synced with our state
         setup_custom_style(ctx, self.dark_mode);
 

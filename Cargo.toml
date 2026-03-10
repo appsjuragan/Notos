@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [workspace]
-package = { version = "0.3.1", edition = "2021" }
+package = { version = "0.3.2", edition = "2021" }
 members = ["notos_sdk", "plugins/notos_plugin_about", "plugins/notos_plugin_json_format", "plugins/notos_plugin_base64", "plugins/notos_plugin_url_detector"]
 
 [dependencies]
@@ -20,6 +20,8 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 arboard = { version = "3.6.1", default-features = false }
 image = { version = "0.25", default-features = false, features = ["png"] }
 encoding_rs = "0.8"
+flate2 = "1.0"
+base64 = "0.22"
 
 [build-dependencies]
 winres = "0.1.12"
