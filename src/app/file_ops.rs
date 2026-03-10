@@ -1,5 +1,6 @@
 use crate::editor::{EditorTab, TabId};
 use rfd::FileDialog;
+use std::thread;
 
 use super::NotosApp;
 
@@ -15,20 +16,21 @@ impl NotosApp {
             return true;
         }
 
-        let path_clone = path.clone();
-        match EditorTab::from_file(path) {
-            Ok(mut tab) => {
-                tab.scroll_to_cursor = true;
-                self.active_tab_id = Some(tab.id);
-                self.tabs.push(tab);
-                self.add_to_recent(path_clone);
-                true
-            }
-            Err(e) => {
-                log::error!("Failed to open file {:?}: {}", path_clone, e);
-                false
-            }
+        // Check if already loading
+        if self.loading_paths.contains(&path) {
+            return true;
         }
+
+        self.loading_paths.insert(path.clone());
+        let path_clone = path.clone();
+        let tx = self.file_load_sender.clone();
+
+        thread::spawn(move || {
+            let res = EditorTab::from_file(path_clone.clone());
+            let _ = tx.send((path_clone, res.map_err(|e| e.to_string())));
+        });
+
+        true
     }
 
     pub(crate) fn open_file(&mut self) {

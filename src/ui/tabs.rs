@@ -13,6 +13,7 @@ pub fn tab_bar(
     ui: &mut Ui,
     tabs: &[EditorTab],
     active_tab_id: Option<crate::editor::TabId>,
+    loading_paths: &std::collections::HashSet<std::path::PathBuf>,
 ) -> Option<TabAction> {
     let action = ui
         .with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -127,9 +128,6 @@ pub fn tab_bar(
 
                                                         let close_btn_response = ui.add(close_btn);
 
-                                                        if is_hovering_close {
-                                                            ui.ctx().request_repaint();
-                                                        }
 
                                                         close_btn_rect =
                                                             Some(close_btn_response.rect);
@@ -192,6 +190,25 @@ pub fn tab_bar(
                                         action = Some(a);
                                     }
 
+                                    ui.add_space(4.0);
+                                }
+
+                                for path in loading_paths {
+                                    let title = path.file_name()
+                                        .map(|n| n.to_string_lossy().to_string())
+                                        .unwrap_or_else(|| "Loading...".to_string());
+                                    
+                                    egui::Frame::canvas(ui.style())
+                                        .fill(egui::Color32::from_gray(60))
+                                        .stroke(ui.visuals().widgets.noninteractive.bg_stroke)
+                                        .rounding(4.0)
+                                        .inner_margin(egui::Margin::symmetric(8.0, 4.0))
+                                        .show(ui, |ui| {
+                                            ui.horizontal(|ui| {
+                                                ui.add(egui::Spinner::new().size(12.0));
+                                                ui.label(egui::RichText::new(title).italics().color(ui.visuals().weak_text_color()));
+                                            });
+                                        });
                                     ui.add_space(4.0);
                                 }
                                 action

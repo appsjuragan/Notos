@@ -21,6 +21,7 @@ impl NotosApp {
                     tab.push_undo(tab.content.clone());
                     tab.content = new_text;
                     tab.is_dirty = true;
+                    tab.refresh_metadata();
                 }
             }
             PluginAction::ReplaceSelection(new_text) => {
@@ -47,6 +48,7 @@ impl NotosApp {
                         tab.content.insert_str(start, &new_text);
                     }
                     tab.is_dirty = true;
+                    tab.refresh_metadata();
 
                     // Update cursor to end of new text
                     let new_idx = start + new_text.len();
@@ -114,6 +116,7 @@ impl NotosApp {
                             tab.push_undo(tab.content.clone());
                             tab.content.insert_str(idx, &time_str);
                             tab.is_dirty = true;
+                            tab.refresh_metadata();
 
                             state
                                 .cursor

@@ -1,5 +1,6 @@
 use crate::plugin::PluginManager;
 use eframe::egui;
+use std::collections::HashSet;
 
 use crate::dialogs::{CloseConfirmationDialog, FindDialog, GotoLineDialog};
 use crate::editor::{EditorTab, TabId};
@@ -33,6 +34,10 @@ pub struct NotosApp {
     next_underline: Option<(usize, usize)>,
     hovered_char_idx: Option<usize>,
     last_session_save: std::time::Instant,
+    file_load_receiver: std::sync::mpsc::Receiver<(std::path::PathBuf, std::result::Result<EditorTab, String>)>,
+    file_load_sender: std::sync::mpsc::Sender<(std::path::PathBuf, std::result::Result<EditorTab, String>)>,
+    loading_paths: HashSet<std::path::PathBuf>,
+    prev_dark_mode: bool,
 }
 
 impl NotosApp {
@@ -43,6 +48,9 @@ impl NotosApp {
     ) -> Self {
         // Initial setup
         setup_custom_fonts(&cc.egui_ctx);
+
+        let (tx_load, rx_load) =
+            std::sync::mpsc::channel::<(std::path::PathBuf, std::result::Result<EditorTab, String>)>();
 
         let mut app = Self {
             tabs: vec![EditorTab::default()],
@@ -63,6 +71,10 @@ impl NotosApp {
             next_underline: None,
             hovered_char_idx: None,
             last_session_save: std::time::Instant::now(),
+            file_load_receiver: rx_load,
+            file_load_sender: tx_load,
+            loading_paths: HashSet::new(),
+            prev_dark_mode: false,
         };
 
         if let Some(session) = SessionState::load() {
@@ -106,11 +118,17 @@ impl NotosApp {
                 app.tabs.push(tab);
             }
 
-            // Mark all tabs to restore cursor and sync ID counter
+            // Mark all tabs to restore cursor, sync ID counter, and refresh skipped fields
             for tab in &mut app.tabs {
                 crate::editor::ensure_tab_id_at_least(tab.id.0);
                 tab.scroll_to_cursor = true;
+                tab.refresh_metadata();
+                if !tab.large_file {
+                    tab.undo_snapshot = tab.content.clone();
+                }
             }
+
+            app.prev_dark_mode = app.dark_mode;
         } else {
             // Default look
             setup_custom_style(&cc.egui_ctx, app.dark_mode);
@@ -118,6 +136,8 @@ impl NotosApp {
             if let Some(first) = app.tabs.first() {
                 app.active_tab_id = Some(first.id);
             }
+
+            app.prev_dark_mode = app.dark_mode;
         }
 
         // Load plugins here

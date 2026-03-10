@@ -31,7 +31,6 @@ impl NotosApp {
 
         if let Some(tab) = tabs.get_mut(idx) {
             let mut content_changed = false;
-            let previous_content = tab.content.clone();
 
             let mut new_cursor_pos = None;
             let mut tab_changed_idx = None;
@@ -50,12 +49,7 @@ impl NotosApp {
                 let font_id = egui::FontId::new(self.editor_font_size, family);
 
                 let line_number_width = if self.show_line_numbers {
-                    let line_count = tab.content.lines().count().max(1);
-                    let line_count = if tab.content.ends_with('\n') {
-                        line_count + 1
-                    } else {
-                        line_count
-                    };
+                    let line_count = tab.line_count;
                     let num_digits = line_count.to_string().len().max(2);
                     (num_digits as f32 * self.editor_font_size * 0.6) + 12.0
                 } else {
@@ -72,7 +66,6 @@ impl NotosApp {
 
                 let mut text_edit_res = None;
                 let mut text_edit_output = None;
-                let mut galley_to_draw: Option<std::sync::Arc<egui::Galley>> = None;
 
                 ui.horizontal(|ui| {
                     if self.show_line_numbers {
@@ -141,89 +134,91 @@ impl NotosApp {
                             egui::TextEdit::store_state(ui.ctx(), id, state);
                         }
 
-                        let text_edit = egui::TextEdit::multiline(&mut tab.content)
+                        let mut text_edit = egui::TextEdit::multiline(&mut tab.content)
                             .id(egui::Id::new("editor").with(tab.id))
                             .font(font_id.clone())
                             .frame(false)
                             .code_editor()
                             .lock_focus(true)
                             .margin(egui::Margin::symmetric(10.0, 10.0))
-                            .layouter(&mut layouter)
                             .desired_width(if word_wrap {
                                 ui.available_width()
                             } else {
                                 f32::INFINITY
                             });
 
+                        // Only use custom layouter if we have underlines or it's not a large file
+                        if !tab.large_file || next_underline_ref.is_some() {
+                            text_edit = text_edit.layouter(&mut layouter);
+                        }
+
                         let output = text_edit.show(ui);
 
-                        galley_to_draw = Some(output.galley.clone());
-
                         // Render Find Highlight (Undermost Layer) if Dialog Active
-                        if self.find_dialog.open && !self.find_dialog.query.is_empty() {
+                        if self.find_dialog.open && !self.find_dialog.query.is_empty() && !tab.large_file {
                             let text = &tab.content;
                             let query = &self.find_dialog.query;
                             let match_case = self.find_dialog.match_case;
                             let active_range = tab.cursor_range;
-                            let mut match_ranges = Vec::new();
-
-                            let mut last_idx = 0;
-                            if match_case {
-                                while let Some(idx) = text[last_idx..].find(query) {
-                                    let start = last_idx + idx;
-                                    let end = start + query.len();
-                                    if text.is_char_boundary(start) && text.is_char_boundary(end) {
-                                        match_ranges.push((start, end));
-                                    }
-                                    last_idx = start + 1;
-                                }
-                            } else {
-                                let query_lower = query.to_lowercase();
-                                let string_lower = text.to_lowercase();
-                                while let Some(idx) = string_lower[last_idx..].find(&query_lower) {
-                                    let start = last_idx + idx;
-                                    let end = start + query_lower.len();
-                                    if text.is_char_boundary(start)
-                                        && text.is_char_boundary(end)
-                                        && text[start..end].to_lowercase() == query_lower
-                                    {
-                                        match_ranges.push((start, end));
-                                    }
-                                    last_idx = start + 1;
-                                }
-                            }
-
-                            // Use galley_pos: the exact Pos2 origin egui uses to paint the galley
+                            let clip_rect = ui.clip_rect();
                             let galley_origin = output.galley_pos;
+                            let galley = &output.galley;
                             let painter = ui.painter();
 
-                            for (byte_start, byte_end) in match_ranges {
-                                let galley = &output.galley;
+                            let mut last_idx = 0;
+                            let mut visible_count = 0usize;
+                            const MAX_VISIBLE_HIGHLIGHTS: usize = 1000;
 
-                                // Convert byte offsets -> char counts for egui's galley
-                                // (egui normalizes \r\n to \n, so raw byte offsets drift)
-                                let char_start = text[..byte_start].chars().count();
-                                let char_end = text[..byte_end].chars().count();
+                            // Pre-compute lowercase only once if needed
+                            let (search_text, search_query): (std::borrow::Cow<str>, std::borrow::Cow<str>) = if match_case {
+                                (std::borrow::Cow::Borrowed(text), std::borrow::Cow::Borrowed(query))
+                            } else {
+                                (std::borrow::Cow::Owned(text.to_lowercase()), std::borrow::Cow::Owned(query.to_lowercase()))
+                            };
 
-                                // Lookup start geometry (galley-local)
+                            while let Some(idx) = search_text[last_idx..].find(search_query.as_ref()) {
+                                if visible_count >= MAX_VISIBLE_HIGHLIGHTS { break; }
+
+                                let start = last_idx + idx;
+                                let end = start + search_query.len();
+                                last_idx = start + 1;
+
+                                if !text.is_char_boundary(start) || !text.is_char_boundary(end) {
+                                    continue;
+                                }
+
+                                // For case-insensitive, verify the original text match
+                                if !match_case && text[start..end].to_lowercase() != search_query.as_ref() {
+                                    continue;
+                                }
+
+                                // Convert byte offsets -> char counts
+                                let char_start = text[..start].chars().count();
+                                let char_end = text[..end].chars().count();
+
+                                // Get geometry and check visibility before painting
                                 let pcursor_start = galley
                                     .from_ccursor(egui::text::CCursor::new(char_start))
                                     .pcursor;
                                 let local_start = galley.pos_from_pcursor(pcursor_start);
 
-                                // Lookup end geometry (galley-local)
                                 let pcursor_end = galley
                                     .from_ccursor(egui::text::CCursor::new(char_end))
                                     .pcursor;
                                 let local_end = galley.pos_from_pcursor(pcursor_end);
 
-                                // Translate to screen space
                                 let bg_rect = egui::Rect::from_min_max(
                                     galley_origin + local_start.min.to_vec2(),
                                     galley_origin + egui::vec2(local_end.min.x, local_start.max.y),
                                 );
 
-                                // Active match: compare by char counts (tab.cursor_range stores char counts)
+                                // Skip highlights outside the visible area
+                                if bg_rect.max.y < clip_rect.min.y || bg_rect.min.y > clip_rect.max.y {
+                                    continue;
+                                }
+
+                                visible_count += 1;
+
                                 let is_active = active_range
                                     .map(|(p, s)| p == char_start && s == char_end)
                                     .unwrap_or(false);
@@ -285,30 +280,33 @@ impl NotosApp {
                         if output.response.changed() {
                             content_changed = true;
                             tab.is_dirty = true;
+                            tab.refresh_metadata();
                             tab_changed_idx = Some(idx);
                         }
 
                         // Update hover index based on mouse position
                         let mut hovered_idx = None;
                         if let Some(hover_pos) = output.response.hover_pos() {
-                            if let Some(galley) = galley_to_draw.as_ref() {
                                 let text_pos =
                                     output.response.rect.min + egui::vec2(margin, margin);
                                 let relative_pos = hover_pos - text_pos;
-                                let cursor = galley.cursor_from_pos(relative_pos);
+                                let cursor = output.galley.cursor_from_pos(relative_pos);
                                 let paragraph = cursor.pcursor.paragraph;
                                 let offset = cursor.pcursor.offset;
-                                let content = &tab.content;
-                                let mut abs_idx = 0usize;
-                                for (i, line) in content.split('\n').enumerate() {
-                                    if i == paragraph {
-                                        abs_idx += offset.min(line.len());
-                                        break;
-                                    }
-                                    abs_idx += line.len() + 1;
-                                }
+                                // Use precomputed line_offsets for O(1) lookup instead of iterating lines
+                                let abs_idx = if paragraph < tab.line_offsets.len() {
+                                    let line_start = tab.line_offsets[paragraph];
+                                    // Clamp offset to end of this line
+                                    let line_end = if paragraph + 1 < tab.line_offsets.len() {
+                                        tab.line_offsets[paragraph + 1].saturating_sub(1)
+                                    } else {
+                                        tab.content.len()
+                                    };
+                                    line_start + offset.min(line_end - line_start)
+                                } else {
+                                    tab.content.len()
+                                };
                                 hovered_idx = Some(abs_idx);
-                            }
                         }
 
                         hovered_idx_out = hovered_idx;
@@ -342,19 +340,21 @@ impl NotosApp {
 
                                 let idx = range.primary.index;
                                 let text = &tab.content;
-                                let mut line = 1;
+                                
+                                // Optimized binary search for line/col
+                                let line_idx = match tab.line_offsets.binary_search(&idx) {
+                                    Ok(l) => l,
+                                    Err(l) => l - 1,
+                                };
+                                let line_start = tab.line_offsets[line_idx];
+                                let line = line_idx + 1;
                                 let mut col = 1;
-                                for (i, c) in text.char_indices() {
-                                    if i >= idx {
-                                        break;
-                                    }
-                                    if c == '\n' {
-                                        line += 1;
-                                        col = 1;
-                                    } else {
-                                        col += 1;
-                                    }
+                                
+                                // Count chars in the current line up to index
+                                for (_, _) in text[line_start..idx].char_indices() {
+                                    col += 1;
                                 }
+
                                 new_cursor_pos = Some((line, col));
                             }
                         }
@@ -395,18 +395,24 @@ impl NotosApp {
                                 ui.visuals().widgets.noninteractive.bg_stroke,
                             );
 
+                            let clip_rect = ui.clip_rect();
+
                             for row in &galley.rows {
                                 if is_start_of_logical_line {
                                     let row_center_y = galley_pos.y + row.rect.center().y;
-                                    let pos = egui::pos2(galley_pos.x - 20.0, row_center_y);
 
-                                    painter.text(
-                                        pos,
-                                        egui::Align2::RIGHT_CENTER,
-                                        logical_line.to_string(),
-                                        font_id.clone(),
-                                        ui.visuals().weak_text_color(),
-                                    );
+                                    // Only paint line numbers in the visible area
+                                    if row_center_y >= clip_rect.min.y - 20.0 && row_center_y <= clip_rect.max.y + 20.0 {
+                                        let pos = egui::pos2(galley_pos.x - 20.0, row_center_y);
+
+                                        painter.text(
+                                            pos,
+                                            egui::Align2::RIGHT_CENTER,
+                                            logical_line.to_string(),
+                                            font_id.clone(),
+                                            ui.visuals().weak_text_color(),
+                                        );
+                                    }
                                     logical_line += 1;
                                 }
                                 is_start_of_logical_line = row.ends_with_newline;
@@ -540,7 +546,13 @@ impl NotosApp {
             if content_changed {
                 if let Some(idx) = tab_changed_idx {
                     if let Some(tab) = self.tabs.get_mut(idx) {
-                        tab.push_undo(previous_content);
+                        if !tab.large_file {
+                            // Use the stored snapshot (avoids per-frame clone)
+                            let snapshot = std::mem::take(&mut tab.undo_snapshot);
+                            tab.push_undo(snapshot);
+                        }
+                        // Refresh snapshot for the next edit
+                        tab.undo_snapshot = tab.content.clone();
                     }
                 }
             }

@@ -22,7 +22,7 @@ pub fn status_bar(
         if let Some(index) = active_tab_index {
             let (chars, line, col) = {
                 let tab = &tabs[index];
-                (tab.content.chars().count(), cursor_pos.0, cursor_pos.1)
+                (tab.char_count, cursor_pos.0, cursor_pos.1)
             };
 
             // Left side items

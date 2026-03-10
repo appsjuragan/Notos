@@ -1,8 +1,15 @@
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Write, BufReader};
 use std::path::PathBuf;
+
+/// Files above this threshold (10 MB) are opened in large-file mode.
+/// In large-file mode, undo/redo is disabled to avoid cloning huge strings.
+pub const LARGE_FILE_THRESHOLD: u64 = 10 * 1024 * 1024;
+
+/// Maximum total bytes the undo stack may hold before old entries are evicted.
+const UNDO_STACK_MAX_BYTES: usize = 50 * 1024 * 1024; // 50 MB
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum LineEnding {
@@ -91,6 +98,23 @@ pub struct EditorTab {
     pub center_cursor: bool,
     #[serde(default)]
     pub cursor_range: Option<(usize, usize)>,
+    /// When true, undo/redo and per-frame content cloning are disabled.
+    #[serde(default)]
+    pub large_file: bool,
+    /// Original file size in bytes (used for UI hints).
+    #[serde(default)]
+    pub file_size: u64,
+    /// Cached line offsets for performance
+    #[serde(skip)]
+    pub line_offsets: Vec<usize>,
+    #[serde(skip)]
+    pub line_count: usize,
+    /// Cached character count for status bar
+    #[serde(skip)]
+    pub char_count: usize,
+    /// Snapshot of content before the current edit, used for undo without per-frame cloning.
+    #[serde(skip)]
+    pub undo_snapshot: String,
 }
 
 impl Default for LineEnding {
@@ -120,6 +144,12 @@ impl Default for EditorTab {
             scroll_to_cursor: false,
             center_cursor: false,
             cursor_range: Some((0, 0)),
+            large_file: false,
+            file_size: 0,
+            line_offsets: vec![0],
+            line_count: 1,
+            char_count: 0,
+            undo_snapshot: String::new(),
         }
     }
 }
@@ -133,6 +163,13 @@ impl EditorTab {
             .unwrap_or("Untitled")
             .to_string();
 
+        let size = content.len() as u64;
+        let is_large = size >= LARGE_FILE_THRESHOLD;
+        let line_offsets = Self::calculate_line_offsets(&content);
+        let line_count = content.lines().count().max(1);
+        let char_count = content.chars().count();
+        let undo_snapshot = if is_large { String::new() } else { content.clone() };
+        
         Self {
             id: next_tab_id(),
             title,
@@ -149,11 +186,36 @@ impl EditorTab {
             scroll_to_cursor: false,
             center_cursor: false,
             cursor_range: Some((0, 0)),
+            large_file: is_large,
+            file_size: size,
+            line_offsets,
+            line_count,
+            char_count,
+            undo_snapshot,
         }
     }
 
     pub fn from_file(path: PathBuf) -> Result<Self> {
-        let bytes = fs::read(&path)?;
+        // Get file size first to pre-allocate and detect large files
+        let metadata = fs::metadata(&path)?;
+        let file_size = metadata.len();
+        let is_large = file_size >= LARGE_FILE_THRESHOLD;
+
+        let file = fs::File::open(&path)?;
+        let mut reader = BufReader::with_capacity(
+            if is_large { 1024 * 1024 } else { 64 * 1024 },
+            file,
+        );
+        let mut bytes = Vec::new();
+        if is_large {
+            use std::io::Read; // for the `take` trait method if not in scope
+            // Prevent hanging and insane memory usage by hard-capping read bytes.
+            let mut take_reader = reader.take(LARGE_FILE_THRESHOLD);
+            take_reader.read_to_end(&mut bytes)?;
+        } else {
+            bytes.reserve_exact(file_size as usize);
+            reader.read_to_end(&mut bytes)?;
+        }
 
         // Try to detect encoding or fallback to UTF-8
         let (content, encoding, _had_errors) = if bytes.starts_with(b"\xFF\xFE") {
@@ -174,29 +236,59 @@ impl EditorTab {
             }
         };
 
+        // Drop the raw byte buffer early to free memory before we allocate more
+        drop(bytes);
+
         let mut content = content;
 
+        // For large files, only sample the first 64KB for line ending detection
+        let sample = if is_large {
+            &content[..content.len().min(64 * 1024)]
+        } else {
+            &content
+        };
+
         // Detect line ending
-        let line_ending = if content.contains("\r\n") {
+        let line_ending = if sample.contains("\r\n") {
             LineEnding::Crlf
-        } else if content.contains('\r') {
+        } else if sample.contains('\r') {
             LineEnding::Cr
         } else {
             LineEnding::Lf
         };
 
         // Normalize to LF for editing
-        if line_ending != LineEnding::Lf {
-            content = content.replace("\r\n", "\n").replace('\r', "\n");
+        if line_ending == LineEnding::Crlf {
+            content.retain(|c| c != '\r');
+        } else if line_ending == LineEnding::Cr {
+            unsafe {
+                let bytes = content.as_mut_vec();
+                for b in bytes.iter_mut() {
+                    if *b == b'\r' {
+                        *b = b'\n';
+                    }
+                }
+            }
         }
 
         let mut tab = Self::new(Some(path), content);
         tab.line_ending = line_ending;
         tab.encoding = encoding;
+        tab.large_file = is_large;
+        tab.file_size = file_size;
+
+        if is_large {
+            tab.content.push_str("\n\n... [File truncated: Cannot fully load files over 10MB in memory preview] ...");
+        }
+
         Ok(tab)
     }
 
     pub fn save(&mut self) -> Result<()> {
+        if self.large_file {
+            return Err("File is too large and was loaded in truncated preview mode. Saving is disabled to prevent data loss.".into());
+        }
+
         if let Some(path) = &self.path {
             let mut file = fs::File::create(path)?;
 
@@ -235,8 +327,21 @@ impl EditorTab {
     }
 
     pub fn push_undo(&mut self, content: String) {
+        // In large-file mode, undo is disabled to prevent huge memory usage
+        if self.large_file {
+            return;
+        }
         self.undo_stack.push(content);
         self.redo_stack.clear();
+
+        // Evict oldest entries if the stack exceeds the memory budget
+        let mut total_bytes: usize = self.undo_stack.iter().map(|s| s.len()).sum();
+        while total_bytes > UNDO_STACK_MAX_BYTES && !self.undo_stack.is_empty() {
+            total_bytes -= self.undo_stack[0].len();
+            self.undo_stack.remove(0);
+        }
+
+        // Also cap the number of entries as a secondary guard
         if self.undo_stack.len() > 100 {
             self.undo_stack.remove(0);
         }
@@ -247,6 +352,7 @@ impl EditorTab {
             self.redo_stack.push(self.content.clone());
             self.content = prev;
             self.is_dirty = true;
+            self.refresh_metadata();
         }
     }
 
@@ -255,6 +361,7 @@ impl EditorTab {
             self.undo_stack.push(self.content.clone());
             self.content = next;
             self.is_dirty = true;
+            self.refresh_metadata();
         }
     }
 
@@ -264,5 +371,21 @@ impl EditorTab {
 
     pub fn can_redo(&self) -> bool {
         !self.redo_stack.is_empty()
+    }
+
+    pub fn calculate_line_offsets(content: &str) -> Vec<usize> {
+        let mut offsets = vec![0];
+        for (i, b) in content.as_bytes().iter().enumerate() {
+            if *b == b'\n' {
+                offsets.push(i + 1);
+            }
+        }
+        offsets
+    }
+
+    pub fn refresh_metadata(&mut self) {
+        self.line_offsets = Self::calculate_line_offsets(&self.content);
+        self.line_count = self.content.lines().count().max(1) + if self.content.ends_with('\n') { 1 } else { 0 };
+        self.char_count = self.content.chars().count();
     }
 }

@@ -20,6 +20,23 @@ impl eframe::App for NotosApp {
             }
         }
 
+        // Handle background file loads
+        while let Ok((path, result)) = self.file_load_receiver.try_recv() {
+            self.loading_paths.remove(&path);
+            match result {
+                Ok(mut tab) => {
+                    self.add_to_recent(path);
+                    tab.scroll_to_cursor = true;
+                    self.active_tab_id = Some(tab.id);
+                    self.tabs.push(tab);
+                    ctx.request_repaint();
+                }
+                Err(e) => {
+                    log::error!("Background load failed for {:?}: {}", path, e);
+                }
+            }
+        }
+
         // Periodic session save (every 30 seconds)
         if self.last_session_save.elapsed() >= std::time::Duration::from_secs(30) {
             if let Err(e) = SessionState::save(
@@ -38,8 +55,11 @@ impl eframe::App for NotosApp {
             self.last_session_save = std::time::Instant::now();
         }
 
-        // ALWAYS ensure visuals are synced with our state
-        setup_custom_style(ctx, self.dark_mode);
+        // Only rebuild visuals when dark_mode actually changes
+        if self.prev_dark_mode != self.dark_mode {
+            setup_custom_style(ctx, self.dark_mode);
+            self.prev_dark_mode = self.dark_mode;
+        }
 
         // Handle Window Close
         if ctx.input(|i| i.viewport().close_requested()) {
@@ -172,7 +192,7 @@ impl eframe::App for NotosApp {
                 plugin_action_to_run_top = p;
 
                 ui.add_space(4.0);
-                tab_action_to_run = crate::ui::tab_bar(ui, tabs, active_tab_id);
+                tab_action_to_run = crate::ui::tab_bar(ui, tabs, active_tab_id, &self.loading_paths);
             });
 
         if let Some(action) = menu_action_to_run {
