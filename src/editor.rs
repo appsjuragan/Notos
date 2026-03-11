@@ -241,9 +241,11 @@ impl EditorTab {
 
         let mut content = content;
 
-        // For large files, only sample the first 64KB for line ending detection
+        // For large files, only sample the first 64KB (at a valid char boundary) for line ending detection
         let sample = if is_large {
-            &content[..content.len().min(64 * 1024)]
+            let max_bytes = content.len().min(64 * 1024);
+            let safe_len = content.floor_char_boundary(max_bytes);
+            &content[..safe_len]
         } else {
             &content
         };

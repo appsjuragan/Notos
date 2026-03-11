@@ -300,22 +300,7 @@ impl NotosApp {
                                     output.response.rect.min + egui::vec2(margin, margin);
                                 let relative_pos = hover_pos - text_pos;
                                 let cursor = output.galley.cursor_from_pos(relative_pos);
-                                let paragraph = cursor.pcursor.paragraph;
-                                let offset = cursor.pcursor.offset;
-                                // Use precomputed line_offsets for O(1) lookup instead of iterating lines
-                                let abs_idx = if paragraph < tab.line_offsets.len() {
-                                    let line_start = tab.line_offsets[paragraph];
-                                    // Clamp offset to end of this line
-                                    let line_end = if paragraph + 1 < tab.line_offsets.len() {
-                                        tab.line_offsets[paragraph + 1].saturating_sub(1)
-                                    } else {
-                                        tab.content.len()
-                                    };
-                                    line_start + offset.min(line_end - line_start)
-                                } else {
-                                    tab.content.len()
-                                };
-                                hovered_idx = Some(abs_idx);
+                                hovered_idx = Some(cursor.ccursor.index);
                         }
 
                         hovered_idx_out = hovered_idx;
@@ -350,8 +335,10 @@ impl NotosApp {
                                 let idx = range.primary.index;
                                 let text = &tab.content;
                                 
-                                // Optimized binary search for line/col
-                                let line_idx = match tab.line_offsets.binary_search(&idx) {
+                                let byte_idx = text.char_indices().nth(idx).map(|(i, _)| i).unwrap_or(text.len());
+                                
+                                // Optimized binary search for line/col using byte_idx
+                                let line_idx = match tab.line_offsets.binary_search(&byte_idx) {
                                     Ok(l) => l,
                                     Err(l) => l - 1,
                                 };
@@ -359,8 +346,8 @@ impl NotosApp {
                                 let line = line_idx + 1;
                                 let mut col = 1;
                                 
-                                // Count chars in the current line up to index
-                                for (_, _) in text[line_start..idx].char_indices() {
+                                // Count chars in the current line up to byte_idx
+                                for (_, _) in text[line_start..byte_idx].char_indices() {
                                     col += 1;
                                 }
 

@@ -41,17 +41,20 @@ impl NotosApp {
                         range.primary.index.max(range.secondary.index),
                     );
 
+                    let byte_start = tab.content.char_indices().nth(start).map_or(tab.content.len(), |(i, _)| i);
+                    let byte_end = tab.content.char_indices().nth(end).map_or(tab.content.len(), |(i, _)| i);
+
                     tab.push_undo(tab.content.clone());
-                    if start != end {
-                        tab.content.replace_range(start..end, &new_text);
+                    if byte_start != byte_end {
+                        tab.content.replace_range(byte_start..byte_end, &new_text);
                     } else {
-                        tab.content.insert_str(start, &new_text);
+                        tab.content.insert_str(byte_start, &new_text);
                     }
                     tab.is_dirty = true;
                     tab.refresh_metadata();
 
-                    // Update cursor to end of new text
-                    let new_idx = start + new_text.len();
+                    // Update cursor to end of new text (must be char count)
+                    let new_idx = start + new_text.chars().count();
                     state
                         .cursor
                         .set_char_range(Some(egui::text::CCursorRange::one(
@@ -113,8 +116,9 @@ impl NotosApp {
                     if let Some(mut state) = egui::TextEdit::load_state(ctx, id) {
                         if let Some(range) = state.cursor.char_range() {
                             let idx = range.primary.index;
+                            let byte_idx = tab.content.char_indices().nth(idx).map_or(tab.content.len(), |(i, _)| i);
                             tab.push_undo(tab.content.clone());
-                            tab.content.insert_str(idx, &time_str);
+                            tab.content.insert_str(byte_idx, &time_str);
                             tab.is_dirty = true;
                             tab.refresh_metadata();
 
