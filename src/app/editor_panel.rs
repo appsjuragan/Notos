@@ -423,6 +423,7 @@ impl NotosApp {
                         content: &tab.content,
                         selection: tab.cursor_range,
                         hovered_char_idx: hovered_idx_out,
+                        file_path: tab.path.as_deref(),
                     };
                     let can_undo = tab.can_undo();
                     let can_redo = tab.can_redo();

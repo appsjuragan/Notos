@@ -189,12 +189,14 @@ fn get_ed_ctx(
             content: &tab.content,
             selection: tab.cursor_range,
             hovered_char_idx,
+            file_path: tab.path.as_deref(),
         }
     } else {
         notos_sdk::EditorContext {
             content: "",
             selection: None,
             hovered_char_idx,
+            file_path: None,
         }
     }
 }

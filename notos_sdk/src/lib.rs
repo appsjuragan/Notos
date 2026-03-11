@@ -19,6 +19,8 @@ pub struct EditorContext<'a> {
     pub content: &'a str,
     pub selection: Option<(usize, usize)>,
     pub hovered_char_idx: Option<usize>,
+    /// The file path of the active tab, if it has one.
+    pub file_path: Option<&'a std::path::Path>,
 }
 
 /// The trait that all plugins must implement.

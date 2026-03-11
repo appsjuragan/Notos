@@ -5,7 +5,7 @@ edition.workspace = true
 
 [workspace]
 package = { version = "0.3.2", edition = "2021" }
-members = ["notos_sdk", "plugins/notos_plugin_about", "plugins/notos_plugin_json_format", "plugins/notos_plugin_base64", "plugins/notos_plugin_url_detector"]
+members = ["notos_sdk", "plugins/notos_plugin_about", "plugins/notos_plugin_json_format", "plugins/notos_plugin_base64", "plugins/notos_plugin_url_detector", "plugins/notos_plugin_hex_viewer"]
 
 [workspace.dependencies]
 egui = { version = "0.29.1", default-features = false }

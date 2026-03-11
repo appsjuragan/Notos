@@ -1,0 +1,13 @@
+[package]
+name = "notos_plugin_hex_viewer"
+version.workspace = true
+edition.workspace = true
+description = "A plugin that displays the current file's raw bytes in a classic HEX viewer layout."
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+notos_sdk = { path = "../../notos_sdk" }
+egui = { workspace = true }
+log = { workspace = true }
