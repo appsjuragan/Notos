@@ -1,3 +1,4 @@
+// Markdown Preview Plugin
 use notos_sdk::{EditorContext, NotosPlugin, PluginAction};
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use std::sync::{Arc, RwLock};
@@ -33,7 +34,7 @@ impl NotosPlugin for MarkdownPreviewPlugin {
 
     fn plugins_menu_ui(&mut self, ui: &mut egui::Ui, _ed: &EditorContext) -> PluginAction {
         let mut s = self.state.write().unwrap();
-        if ui.checkbox(&mut s.open, "📖 Show Markdown Preview").changed() {
+        if ui.checkbox(&mut s.open, " Show Markdown Preview").changed() {
             // Repaint to show/hide
             ui.ctx().request_repaint();
         }

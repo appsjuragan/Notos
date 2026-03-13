@@ -14,6 +14,7 @@ pub enum MenuAction {
     Replace,
     GotoLine,
     TimeDate,
+    SelectAll,
     ToggleWordWrap,
     ToggleLineNumbers,
     ToggleDarkMode,
@@ -146,6 +147,13 @@ pub fn menu_bar(
             ui.separator();
             if ui.button("📅 Time/Date  F5").clicked() {
                 action = Some(MenuAction::TimeDate);
+                ui.close_menu();
+            }
+            if ui
+                .add(egui::Button::new("✅ Select All").shortcut_text("Ctrl+A"))
+                .clicked()
+            {
+                action = Some(MenuAction::SelectAll);
                 ui.close_menu();
             }
         });

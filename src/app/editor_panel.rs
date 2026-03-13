@@ -522,20 +522,11 @@ impl NotosApp {
                 }
                 DeferredAction::SelectAll => {
                     if let Some(tab) = self.active_tab_mut() {
-                        let len = tab.content.len();
-                        let id = egui::Id::new("editor").with(tab.id);
-                        if let Some(mut state) = egui::TextEdit::load_state(ctx, id) {
-                            state
-                                .cursor
-                                .set_char_range(Some(egui::text::CCursorRange::two(
-                                    egui::text::CCursor::new(0),
-                                    egui::text::CCursor::new(len),
-                                )));
-                            egui::TextEdit::store_state(ctx, id, state);
-                        }
-                        tab.cursor_range = Some((0, len));
-                        tab.undo_snapshot = tab.content.clone();
-                        tab.undo_snapshot_cursor = 0;
+                        let char_count = tab.content.chars().count();
+                        tab.cursor_range = Some((0, char_count));
+                        tab.scroll_to_cursor = true;
+                        tab.center_cursor = false;
+                        ctx.request_repaint();
                     }
                 }
                 DeferredAction::Cut => {
@@ -642,7 +633,7 @@ impl NotosApp {
             }
         } else {
             ui.centered_and_justified(|ui| {
-                ui.label("No open tabs. Press Ctrl+N to create a new one.");
+                ui.label("Ctrl+N to create a new file.");
             });
         }
         self.hovered_char_idx = hovered_idx_out;

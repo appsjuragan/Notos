@@ -168,6 +168,15 @@ impl NotosApp {
                     }
                 }
             }
+            MenuAction::SelectAll => {
+                if let Some(tab) = self.active_tab_mut() {
+                    let char_count = tab.content.chars().count();
+                    tab.cursor_range = Some((0, char_count));
+                    tab.scroll_to_cursor = true;
+                    tab.center_cursor = false;
+                    ctx.request_repaint();
+                }
+            }
             MenuAction::ToggleWordWrap => { /* handled by ref mut */ }
             MenuAction::ToggleLineNumbers => { /* handled by ref mut */ }
             MenuAction::ToggleDarkMode => {
@@ -298,6 +307,9 @@ impl NotosApp {
         }
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::H)) {
             self.handle_menu_action(MenuAction::Replace, ctx);
+        }
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::A)) {
+            self.handle_menu_action(MenuAction::SelectAll, ctx);
         }
     }
 }
