@@ -26,6 +26,8 @@ pub struct SessionState {
     pub custom_fonts: std::collections::HashMap<String, Vec<u8>>,
     #[serde(default)]
     pub recent_files: Vec<std::path::PathBuf>,
+    #[serde(default)]
+    pub undo_state: crate::undo_manager::PersistentUndoState,
 }
 
 fn default_true() -> bool {
@@ -57,6 +59,7 @@ impl SessionState {
         editor_font_family: &str,
         custom_fonts: &std::collections::HashMap<String, Vec<u8>>,
         recent_files: &[std::path::PathBuf],
+        undo_state: crate::undo_manager::PersistentUndoState,
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         const MAX_TAB_SIZE: usize = 128 * 1024 * 1024; // 128 MB
 
@@ -86,6 +89,7 @@ impl SessionState {
             editor_font_family: editor_font_family.to_string(),
             custom_fonts: custom_fonts.clone(),
             recent_files: recent_files.to_vec(),
+            undo_state,
         };
 
         // Serialize to JSON

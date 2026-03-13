@@ -1,0 +1,12 @@
+[package]
+name = "notos_plugin_web_tools"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+notos_sdk = { path = "../../notos_sdk" }
+egui = { workspace = true }
+minifier = "0.3.0"

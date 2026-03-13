@@ -88,6 +88,7 @@ impl NotosApp {
                 self.close_confirmation.closing_app = false;
             } else {
                 self.tabs.remove(index);
+                self.undo_manager.remove_tab(id);
                 if self.active_tab_id == Some(id) {
                     self.active_tab_id = self.tabs.last().map(|t| t.id);
                 }

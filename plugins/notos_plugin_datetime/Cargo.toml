@@ -1,0 +1,12 @@
+[package]
+name = "notos_plugin_datetime"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+notos_sdk = { path = "../../notos_sdk" }
+egui = { workspace = true }
+chrono = { workspace = true }

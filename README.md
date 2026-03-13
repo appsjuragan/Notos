@@ -19,6 +19,7 @@
 - **🌙 "Bit Grey" Dark Mode**: A custom-tuned dark theme designed to reduce eye strain.
 - **↔️ Flexible Word Wrap**: Toggle wrapping on the fly.
 - **📊 Comprehensive Status Bar**: Real-time tracking of cursor position (Ln/Col), character count, and line endings (CRLF/LF).
+- **↩️ Smart Whole-Word Undo**: Undo/redo operations now correctly group changes by whole words rather than individual characters. The system intelligently detects word boundaries, idling breath-times, and significant block changes while accurately restoring cursor positions.
 
 ---
 
@@ -49,6 +50,10 @@ Notos ships with the following built-in plugins:
 | **JSON Format** | Pretty-print or minify JSON content. |
 | **URL Detector** | Detects URLs in text. `Ctrl+Hover` to underline, `Ctrl+Click` to open. Togglable in the Plugins menu. |
 | **About** | Shows application information. |
+| **Case Transformer** | Convert text between UPPERCASE, lowercase, snake_case, camelCase, etc. |
+| **Date/Time Stamping** | Insert customizable date and time formats including ISO 8601 and Unix Timestamps. |
+| **Web Tools** | Minify JS/CSS or apply basic formatting to CSS. |
+| **Markdown Preview** | Live rendering of Markdown content in a side window. |
 
 Plugins can be enabled/disabled from the **🔌 Plugins** menu.
 
