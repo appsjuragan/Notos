@@ -50,6 +50,10 @@ Notos ships with the following built-in plugins:
 | **JSON Format** | Pretty-print or minify JSON content. |
 | **URL Detector** | Detects URLs in text. `Ctrl+Hover` to underline, `Ctrl+Click` to open. Togglable in the Plugins menu. |
 | **About** | Shows application information. |
+| **Case Transformer** | Convert text between UPPERCASE, lowercase, snake_case, camelCase, etc. |
+| **Date/Time Stamping** | Insert customizable date and time formats including ISO 8601 and Unix Timestamps. |
+| **Web Tools** | Minify JS/CSS or apply basic formatting to CSS. |
+| **Markdown Preview** | Live rendering of Markdown content in a side window. |
 
 Plugins can be enabled/disabled from the **🔌 Plugins** menu.
 

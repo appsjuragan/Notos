@@ -1,0 +1,12 @@
+[package]
+name = "notos_plugin_markdown_preview"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+notos_sdk = { path = "../../notos_sdk" }
+egui = { workspace = true }
+egui_commonmark = { version = "0.18.0", default-features = false, features = ["svg"] }
