@@ -8,8 +8,7 @@ use std::path::PathBuf;
 /// In large-file mode, undo/redo is disabled to avoid cloning huge strings.
 pub const LARGE_FILE_THRESHOLD: u64 = 10 * 1024 * 1024;
 
-/// Maximum total bytes the undo stack may hold before old entries are evicted.
-const UNDO_STACK_MAX_BYTES: usize = 50 * 1024 * 1024; // 50 MB
+
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum LineEnding {
@@ -84,10 +83,7 @@ pub struct EditorTab {
     pub content: String,
     pub path: Option<PathBuf>,
     pub is_dirty: bool,
-    #[serde(default)]
-    pub undo_stack: Vec<String>,
-    #[serde(default)]
-    pub redo_stack: Vec<String>,
+
     #[serde(default)]
     pub line_ending: LineEnding,
     #[serde(default)]
@@ -115,6 +111,12 @@ pub struct EditorTab {
     /// Snapshot of content before the current edit, used for undo without per-frame cloning.
     #[serde(skip)]
     pub undo_snapshot: String,
+    #[serde(skip)]
+    pub undo_snapshot_cursor: usize,
+    #[serde(skip)]
+    pub last_edit_time: Option<std::time::Instant>,
+    #[serde(skip)]
+    pub last_edit_was_word_char: bool,
 }
 
 impl Default for LineEnding {
@@ -134,8 +136,7 @@ impl Default for EditorTab {
             content: String::new(),
             path: None,
             is_dirty: false,
-            undo_stack: Vec::new(),
-            redo_stack: Vec::new(),
+
             #[cfg(target_os = "windows")]
             line_ending: LineEnding::Crlf,
             #[cfg(not(target_os = "windows"))]
@@ -150,6 +151,9 @@ impl Default for EditorTab {
             line_count: 1,
             char_count: 0,
             undo_snapshot: String::new(),
+            undo_snapshot_cursor: 0,
+            last_edit_time: None,
+            last_edit_was_word_char: false,
         }
     }
 }
@@ -176,8 +180,7 @@ impl EditorTab {
             content,
             path,
             is_dirty: false,
-            undo_stack: Vec::new(),
-            redo_stack: Vec::new(),
+
             #[cfg(target_os = "windows")]
             line_ending: LineEnding::Crlf,
             #[cfg(not(target_os = "windows"))]
@@ -192,6 +195,9 @@ impl EditorTab {
             line_count,
             char_count,
             undo_snapshot,
+            undo_snapshot_cursor: 0,
+            last_edit_time: None,
+            last_edit_was_word_char: false,
         }
     }
 
@@ -328,52 +334,7 @@ impl EditorTab {
         self.path = Some(path);
     }
 
-    pub fn push_undo(&mut self, content: String) {
-        // In large-file mode, undo is disabled to prevent huge memory usage
-        if self.large_file {
-            return;
-        }
-        self.undo_stack.push(content);
-        self.redo_stack.clear();
 
-        // Evict oldest entries if the stack exceeds the memory budget
-        let mut total_bytes: usize = self.undo_stack.iter().map(|s| s.len()).sum();
-        while total_bytes > UNDO_STACK_MAX_BYTES && !self.undo_stack.is_empty() {
-            total_bytes -= self.undo_stack[0].len();
-            self.undo_stack.remove(0);
-        }
-
-        // Also cap the number of entries as a secondary guard
-        if self.undo_stack.len() > 100 {
-            self.undo_stack.remove(0);
-        }
-    }
-
-    pub fn undo(&mut self) {
-        if let Some(prev) = self.undo_stack.pop() {
-            self.redo_stack.push(self.content.clone());
-            self.content = prev;
-            self.is_dirty = true;
-            self.refresh_metadata();
-        }
-    }
-
-    pub fn redo(&mut self) {
-        if let Some(next) = self.redo_stack.pop() {
-            self.undo_stack.push(self.content.clone());
-            self.content = next;
-            self.is_dirty = true;
-            self.refresh_metadata();
-        }
-    }
-
-    pub fn can_undo(&self) -> bool {
-        !self.undo_stack.is_empty()
-    }
-
-    pub fn can_redo(&self) -> bool {
-        !self.redo_stack.is_empty()
-    }
 
     pub fn calculate_line_offsets(content: &str) -> Vec<usize> {
         let mut offsets = vec![0];

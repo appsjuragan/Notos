@@ -4,7 +4,7 @@ use rfd::FileDialog;
 use crate::editor::EditorTab;
 
 use super::get_ed_ctx;
-use super::session::SessionState;
+
 use super::style::setup_custom_style;
 use super::NotosApp;
 
@@ -39,17 +39,7 @@ impl eframe::App for NotosApp {
 
         // Periodic session save (every 30 seconds)
         if self.last_session_save.elapsed() >= std::time::Duration::from_secs(30) {
-            if let Err(e) = SessionState::save(
-                &self.tabs,
-                self.active_tab_id,
-                self.word_wrap,
-                self.show_line_numbers,
-                self.dark_mode,
-                self.editor_font_size,
-                &self.editor_font_family,
-                &self.custom_fonts,
-                &self.recent_files,
-            ) {
+            if let Err(e) = self.save_session() {
                 log::error!("Failed to save periodic session: {}", e);
             }
             self.last_session_save = std::time::Instant::now();
@@ -70,17 +60,7 @@ impl eframe::App for NotosApp {
 
         // Handle Window Close
         if ctx.input(|i| i.viewport().close_requested()) {
-            match SessionState::save(
-                &self.tabs,
-                self.active_tab_id,
-                self.word_wrap,
-                self.show_line_numbers,
-                self.dark_mode,
-                self.editor_font_size,
-                &self.editor_font_family,
-                &self.custom_fonts,
-                &self.recent_files,
-            ) {
+            match self.save_session() {
                 Ok(_) => {
                     // Session saved, allow close without confirmation
                 }
@@ -120,7 +100,7 @@ impl eframe::App for NotosApp {
             .tabs
             .iter_mut()
             .find(|t| Some(t.id) == self.active_tab_id);
-        self.find_dialog.show(ctx, active_tab);
+        self.find_dialog.show(ctx, active_tab, &mut self.undo_manager);
 
         let active_tab = self
             .tabs
@@ -151,7 +131,7 @@ impl eframe::App for NotosApp {
         };
 
         self.close_confirmation
-            .show(ctx, &mut self.tabs, &mut self.active_tab_id, save_fn);
+            .show(ctx, &mut self.tabs, &mut self.active_tab_id, &mut self.undo_manager, save_fn);
 
         // Determine background colors
         let panel_bg = if self.dark_mode {

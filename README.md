@@ -19,6 +19,7 @@
 - **🌙 "Bit Grey" Dark Mode**: A custom-tuned dark theme designed to reduce eye strain.
 - **↔️ Flexible Word Wrap**: Toggle wrapping on the fly.
 - **📊 Comprehensive Status Bar**: Real-time tracking of cursor position (Ln/Col), character count, and line endings (CRLF/LF).
+- **↩️ Smart Whole-Word Undo**: Undo/redo operations now correctly group changes by whole words rather than individual characters. The system intelligently detects word boundaries, idling breath-times, and significant block changes while accurately restoring cursor positions.
 
 ---
 

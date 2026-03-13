@@ -13,7 +13,7 @@ pub struct FindDialog {
 }
 
 impl FindDialog {
-    pub fn show(&mut self, ctx: &egui::Context, mut active_tab: Option<&mut EditorTab>) {
+    pub fn show(&mut self, ctx: &egui::Context, mut active_tab: Option<&mut EditorTab>, undo_manager: &mut crate::undo_manager::UndoManager) {
         let mut open = self.open;
         let mut find_next_clicked = false;
 
@@ -90,7 +90,7 @@ impl FindDialog {
                                 .add_sized(button_size, egui::Button::new("Replace All"))
                                 .clicked()
                             {
-                                self.perform_replace_all(active_tab.as_deref_mut());
+                                self.perform_replace_all(active_tab.as_deref_mut(), undo_manager);
                             }
                             if ui
                                 .add_sized(button_size, egui::Button::new("Replace"))
@@ -99,6 +99,7 @@ impl FindDialog {
                                 self.perform_replace(
                                     ctx,
                                     active_tab.as_deref_mut(),
+                                    undo_manager,
                                     &mut find_next_clicked,
                                 );
                             }
@@ -124,6 +125,7 @@ impl FindDialog {
         &self,
         ctx: &egui::Context,
         active_tab: Option<&mut EditorTab>,
+        undo_manager: &mut crate::undo_manager::UndoManager,
         find_next_clicked: &mut bool,
     ) {
         let query = &self.query;
@@ -155,7 +157,7 @@ impl FindDialog {
                             let selected_text = &tab.content[byte_start..byte_end];
                             if selected_text == query {
                                 // Replace
-                                tab.push_undo(tab.content.clone());
+                                undo_manager.push_undo(tab.id, tab.content.clone(), char_start, tab.large_file);
                                 tab.content.replace_range(byte_start..byte_end, replace);
                                 tab.is_dirty = true;
 
@@ -182,7 +184,7 @@ impl FindDialog {
         }
     }
 
-    fn perform_replace_all(&self, active_tab: Option<&mut EditorTab>) {
+    fn perform_replace_all(&self, active_tab: Option<&mut EditorTab>, undo_manager: &mut crate::undo_manager::UndoManager) {
         let query = &self.query;
         let replace = &self.replace_with;
 
@@ -190,7 +192,8 @@ impl FindDialog {
             if let Some(tab) = active_tab {
                 let new_content = tab.content.replace(query, replace);
                 if new_content != tab.content {
-                    tab.push_undo(tab.content.clone());
+                    let (curr, _) = tab.cursor_range.unwrap_or((0, 0));
+                    undo_manager.push_undo(tab.id, tab.content.clone(), curr, tab.large_file);
                     tab.content = new_content;
                     tab.is_dirty = true;
                 }
@@ -378,6 +381,7 @@ impl CloseConfirmationDialog {
         ctx: &egui::Context,
         tabs: &mut Vec<EditorTab>,
         active_tab_id: &mut Option<crate::editor::TabId>,
+        undo_manager: &mut crate::undo_manager::UndoManager,
         save_tab_fn: impl Fn(&mut EditorTab) -> std::result::Result<(), Box<dyn std::error::Error>>,
     ) {
         if !self.open {
@@ -426,6 +430,7 @@ impl CloseConfirmationDialog {
 
                                 if saved && !self.closing_app {
                                     tabs.remove(idx);
+                                    undo_manager.remove_tab(tab_id);
                                     if *active_tab_id == Some(tab_id) {
                                         *active_tab_id = tabs.last().map(|t| t.id);
                                     }
@@ -436,6 +441,7 @@ impl CloseConfirmationDialog {
                             if ui.add_sized(button_size, egui::Button::new("No")).clicked() {
                                 if !self.closing_app {
                                     tabs.remove(idx);
+                                    undo_manager.remove_tab(tab_id);
                                     if *active_tab_id == Some(tab_id) {
                                         *active_tab_id = tabs.last().map(|t| t.id);
                                     }

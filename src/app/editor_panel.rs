@@ -1,5 +1,4 @@
 use eframe::egui;
-
 use super::NotosApp;
 
 /// The `DeferredAction` enum for context menu actions in the editor panel.
@@ -18,24 +17,22 @@ pub(crate) enum DeferredAction {
 impl NotosApp {
     /// Renders the central editor panel.
     pub(crate) fn show_editor_panel(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        let plugin_manager = &mut self.plugin_manager;
-        let tabs = &mut self.tabs;
         let active_tab_id = self.active_tab_id;
-
-        let idx = tabs
+        let idx = self.tabs
             .iter()
             .position(|t| Some(t.id) == active_tab_id)
             .unwrap_or(0);
 
         let mut hovered_idx_out = None;
 
-        if let Some(tab) = tabs.get_mut(idx) {
+        if let Some(tab) = self.tabs.get_mut(idx) {
             let mut content_changed = false;
 
             let mut new_cursor_pos = None;
             let mut tab_changed_idx = None;
 
             let mut deferred_action = DeferredAction::None;
+            let previous_char_count_frame = tab.char_count;
 
             egui::ScrollArea::vertical().id_salt(tab.id).show(ui, |ui| {
                 let margin = 10.0;
@@ -425,14 +422,14 @@ impl NotosApp {
                         hovered_char_idx: hovered_idx_out,
                         file_path: tab.path.as_deref(),
                     };
-                    let can_undo = tab.can_undo();
-                    let can_redo = tab.can_redo();
+                    let can_undo = self.undo_manager.can_undo(tab.id);
+                    let can_redo = self.undo_manager.can_redo(tab.id);
 
                     res.context_menu(|ui| {
                         ui.set_min_width(180.0);
 
                         // Plugin actions
-                        let p_action = plugin_manager.context_menu_ui(ui, &ed_ctx);
+                        let p_action = self.plugin_manager.context_menu_ui(ui, &ed_ctx);
                         if p_action != notos_sdk::PluginAction::None {
                             deferred_action = DeferredAction::Plugin(p_action);
                             ui.separator();
@@ -482,13 +479,45 @@ impl NotosApp {
                 DeferredAction::None => {}
                 DeferredAction::Plugin(p) => self.handle_plugin_action(p, ctx),
                 DeferredAction::Undo => {
-                    if let Some(tab) = self.active_tab_mut() {
-                        tab.undo();
+                    if let Some(tab) = self.tabs.iter_mut().find(|t| Some(t.id) == self.active_tab_id) {
+                        let (curr, _) = tab.cursor_range.unwrap_or((0, 0));
+                        if let Some(entry) = self.undo_manager.undo(tab.id, tab.content.clone(), curr) {
+                            tab.content = entry.content;
+                            tab.is_dirty = true;
+                            tab.refresh_metadata();
+                            tab.undo_snapshot = tab.content.clone();
+                            
+                            let id = egui::Id::new("editor").with(tab.id);
+                            if let Some(mut state) = egui::TextEdit::load_state(ctx, id) {
+                                state.cursor.set_char_range(Some(egui::text::CCursorRange::one(
+                                    egui::text::CCursor::new(entry.cursor_pos)
+                                )));
+                                egui::TextEdit::store_state(ctx, id, state);
+                            }
+                            tab.cursor_range = Some((entry.cursor_pos, entry.cursor_pos));
+                            tab.undo_snapshot_cursor = entry.cursor_pos;
+                        }
                     }
                 }
                 DeferredAction::Redo => {
-                    if let Some(tab) = self.active_tab_mut() {
-                        tab.redo();
+                    if let Some(tab) = self.tabs.iter_mut().find(|t| Some(t.id) == self.active_tab_id) {
+                        let (curr, _) = tab.cursor_range.unwrap_or((0, 0));
+                        if let Some(entry) = self.undo_manager.redo(tab.id, tab.content.clone(), curr) {
+                            tab.content = entry.content;
+                            tab.is_dirty = true;
+                            tab.refresh_metadata();
+                            tab.undo_snapshot = tab.content.clone();
+                            
+                            let id = egui::Id::new("editor").with(tab.id);
+                            if let Some(mut state) = egui::TextEdit::load_state(ctx, id) {
+                                state.cursor.set_char_range(Some(egui::text::CCursorRange::one(
+                                    egui::text::CCursor::new(entry.cursor_pos)
+                                )));
+                                egui::TextEdit::store_state(ctx, id, state);
+                            }
+                            tab.cursor_range = Some((entry.cursor_pos, entry.cursor_pos));
+                            tab.undo_snapshot_cursor = entry.cursor_pos;
+                        }
                     }
                 }
                 DeferredAction::SelectAll => {
@@ -505,19 +534,30 @@ impl NotosApp {
                             egui::TextEdit::store_state(ctx, id, state);
                         }
                         tab.cursor_range = Some((0, len));
+                        tab.undo_snapshot = tab.content.clone();
+                        tab.undo_snapshot_cursor = 0;
                     }
                 }
                 DeferredAction::Cut => {
+                    let mut cut_meta = None;
                     if let Some(tab) = self.active_tab_mut() {
                         if let Some((s, e)) = tab.cursor_range {
                             let range = s.min(e)..s.max(e);
                             if let Some(text) = tab.content.get(range) {
-                                ctx.output_mut(|o| o.copied_text = text.to_string());
-                                self.handle_plugin_action(
-                                    notos_sdk::PluginAction::ReplaceSelection("".to_string()),
-                                    ctx,
-                                );
+                                cut_meta = Some(text.to_string());
                             }
+                        }
+                    }
+                    if let Some(text) = cut_meta {
+                        ctx.output_mut(|o| o.copied_text = text);
+                        self.handle_plugin_action(
+                            notos_sdk::PluginAction::ReplaceSelection("".to_string()),
+                            ctx,
+                        );
+                        if let Some(tab) = self.active_tab_mut() {
+                            let (curr, _) = tab.cursor_range.unwrap_or((0, 0));
+                            tab.undo_snapshot = tab.content.clone();
+                            tab.undo_snapshot_cursor = curr;
                         }
                     }
                 }
@@ -540,16 +580,63 @@ impl NotosApp {
                 self.current_cursor_pos = pos;
             }
 
+            if let Some(tab) = self.tabs.get_mut(idx) {
+                if !tab.large_file {
+                    if let Some(last) = tab.last_edit_time {
+                        let now = std::time::Instant::now();
+                        let elapsed = now.duration_since(last).as_secs_f32();
+                        if elapsed > 1.5 {
+                            if tab.undo_snapshot != tab.content {
+                                let snapshot = std::mem::replace(&mut tab.undo_snapshot, tab.content.clone());
+                                let snapshot_cursor = std::mem::replace(&mut tab.undo_snapshot_cursor, tab.cursor_range.map(|(p,_)| p).unwrap_or(0));
+                                self.undo_manager.push_undo(tab.id, snapshot, snapshot_cursor, tab.large_file);
+                            }
+                            tab.last_edit_time = None;
+                        } else {
+                            ctx.request_repaint_after(std::time::Duration::from_secs_f32(1.5 - elapsed));
+                        }
+                    }
+                }
+            }
+
             if content_changed {
                 if let Some(idx) = tab_changed_idx {
                     if let Some(tab) = self.tabs.get_mut(idx) {
                         if !tab.large_file {
-                            // Use the stored snapshot (avoids per-frame clone)
-                            let snapshot = std::mem::take(&mut tab.undo_snapshot);
-                            tab.push_undo(snapshot);
+                            let now = std::time::Instant::now();
+                            let mut should_push = false;
+
+                            // 2. Word boundary break
+                            // We check the bit of text around the cursor to see if we just typed a transition
+                            if let Some((curr, _)) = tab.cursor_range {
+                                if curr > 0 {
+                                    let prev_char = tab.content.chars().nth(curr - 1);
+                                    if let Some(c) = prev_char {
+                                        let is_word_char = c.is_alphanumeric();
+                                        if is_word_char != tab.last_edit_was_word_char {
+                                            // Transition! e.g. "word" -> "word "
+                                            if !is_word_char && tab.last_edit_was_word_char {
+                                                should_push = true;
+                                            }
+                                        }
+                                        tab.last_edit_was_word_char = is_word_char;
+                                    }
+                                }
+                            }
+
+                            // 3. Significant change break (Paste, Delete block, etc)
+                            if (tab.char_count as isize - previous_char_count_frame as isize).abs() > 1 {
+                                should_push = true;
+                            }
+                            
+                            if should_push && tab.undo_snapshot != tab.content {
+                                let snapshot = std::mem::replace(&mut tab.undo_snapshot, tab.content.clone());
+                                let snapshot_cursor = std::mem::replace(&mut tab.undo_snapshot_cursor, tab.cursor_range.map(|(p,_)| p).unwrap_or(0));
+                                self.undo_manager.push_undo(tab.id, snapshot, snapshot_cursor, tab.large_file);
+                            }
+
+                            tab.last_edit_time = Some(now);
                         }
-                        // Refresh snapshot for the next edit
-                        tab.undo_snapshot = tab.content.clone();
                     }
                 }
             }

@@ -5,6 +5,7 @@ mod dialogs;
 mod editor;
 mod plugin;
 mod ui;
+mod undo_manager;
 mod utils;
 
 use app::NotosApp;

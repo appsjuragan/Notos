@@ -17,15 +17,18 @@ impl NotosApp {
         match action {
             PluginAction::None => {}
             PluginAction::ReplaceAll(new_text) => {
-                if let Some(tab) = self.active_tab_mut() {
-                    tab.push_undo(tab.content.clone());
+                if let Some(tab) = self.tabs.iter_mut().find(|t| Some(t.id) == self.active_tab_id) {
+                    let (curr, _) = tab.cursor_range.unwrap_or((0, 0));
+                    self.undo_manager.push_undo(tab.id, tab.content.clone(), curr, tab.large_file);
                     tab.content = new_text;
                     tab.is_dirty = true;
                     tab.refresh_metadata();
+                    tab.undo_snapshot = tab.content.clone();
+                    tab.undo_snapshot_cursor = 0; // After replace all, we don't really have a 'prev' cursor that makes sense other than 0
                 }
             }
             PluginAction::ReplaceSelection(new_text) => {
-                if let Some(tab) = self.active_tab_mut() {
+                if let Some(tab) = self.tabs.iter_mut().find(|t| Some(t.id) == self.active_tab_id) {
                     let id = egui::Id::new("editor").with(tab.id);
                     let mut state = egui::TextEdit::load_state(ctx, id).unwrap_or_default();
                     let range = state.cursor.char_range().unwrap_or_else(|| {
@@ -44,7 +47,7 @@ impl NotosApp {
                     let byte_start = tab.content.char_indices().nth(start).map_or(tab.content.len(), |(i, _)| i);
                     let byte_end = tab.content.char_indices().nth(end).map_or(tab.content.len(), |(i, _)| i);
 
-                    tab.push_undo(tab.content.clone());
+                    self.undo_manager.push_undo(tab.id, tab.content.clone(), start, tab.large_file);
                     if byte_start != byte_end {
                         tab.content.replace_range(byte_start..byte_end, &new_text);
                     } else {
@@ -84,13 +87,45 @@ impl NotosApp {
             MenuAction::SaveAs => self.save_file_as(),
             MenuAction::Exit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
             MenuAction::Undo => {
-                if let Some(tab) = self.active_tab_mut() {
-                    tab.undo();
+                if let Some(tab) = self.tabs.iter_mut().find(|t| Some(t.id) == self.active_tab_id) {
+                    let (curr, _) = tab.cursor_range.unwrap_or((0, 0));
+                    if let Some(entry) = self.undo_manager.undo(tab.id, tab.content.clone(), curr) {
+                        tab.content = entry.content;
+                        tab.is_dirty = true;
+                        tab.refresh_metadata();
+                        tab.undo_snapshot = tab.content.clone();
+                        tab.undo_snapshot_cursor = entry.cursor_pos;
+                        
+                        let id = egui::Id::new("editor").with(tab.id);
+                        if let Some(mut state) = egui::TextEdit::load_state(ctx, id) {
+                            state.cursor.set_char_range(Some(egui::text::CCursorRange::one(
+                                egui::text::CCursor::new(entry.cursor_pos)
+                            )));
+                            egui::TextEdit::store_state(ctx, id, state);
+                        }
+                        tab.cursor_range = Some((entry.cursor_pos, entry.cursor_pos));
+                    }
                 }
             }
             MenuAction::Redo => {
-                if let Some(tab) = self.active_tab_mut() {
-                    tab.redo();
+                if let Some(tab) = self.tabs.iter_mut().find(|t| Some(t.id) == self.active_tab_id) {
+                    let (curr, _) = tab.cursor_range.unwrap_or((0, 0));
+                    if let Some(entry) = self.undo_manager.redo(tab.id, tab.content.clone(), curr) {
+                        tab.content = entry.content;
+                        tab.is_dirty = true;
+                        tab.refresh_metadata();
+                        tab.undo_snapshot = tab.content.clone();
+                        tab.undo_snapshot_cursor = entry.cursor_pos;
+
+                        let id = egui::Id::new("editor").with(tab.id);
+                        if let Some(mut state) = egui::TextEdit::load_state(ctx, id) {
+                            state.cursor.set_char_range(Some(egui::text::CCursorRange::one(
+                                egui::text::CCursor::new(entry.cursor_pos)
+                            )));
+                            egui::TextEdit::store_state(ctx, id, state);
+                        }
+                        tab.cursor_range = Some((entry.cursor_pos, entry.cursor_pos));
+                    }
                 }
             }
             MenuAction::Find => {
@@ -108,7 +143,7 @@ impl NotosApp {
                 self.goto_dialog.line_str = self.current_cursor_pos.0.to_string();
             }
             MenuAction::TimeDate => {
-                if let Some(tab) = self.active_tab_mut() {
+                if let Some(tab) = self.tabs.iter_mut().find(|t| Some(t.id) == self.active_tab_id) {
                     let now = chrono::Local::now();
                     let time_str = now.format("%I:%M %p %m/%d/%Y").to_string();
 
@@ -117,10 +152,11 @@ impl NotosApp {
                         if let Some(range) = state.cursor.char_range() {
                             let idx = range.primary.index;
                             let byte_idx = tab.content.char_indices().nth(idx).map_or(tab.content.len(), |(i, _)| i);
-                            tab.push_undo(tab.content.clone());
+                            self.undo_manager.push_undo(tab.id, tab.content.clone(), idx, tab.large_file);
                             tab.content.insert_str(byte_idx, &time_str);
                             tab.is_dirty = true;
                             tab.refresh_metadata();
+                            tab.undo_snapshot = tab.content.clone();
 
                             state
                                 .cursor

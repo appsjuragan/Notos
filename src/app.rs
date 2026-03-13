@@ -1,4 +1,5 @@
 use crate::plugin::PluginManager;
+use crate::undo_manager::UndoManager;
 use eframe::egui;
 use std::collections::HashSet;
 
@@ -38,6 +39,7 @@ pub struct NotosApp {
     file_load_sender: std::sync::mpsc::Sender<(std::path::PathBuf, std::result::Result<EditorTab, String>)>,
     loading_paths: HashSet<std::path::PathBuf>,
     prev_dark_mode: bool,
+    pub(crate) undo_manager: UndoManager,
 }
 
 impl NotosApp {
@@ -75,9 +77,11 @@ impl NotosApp {
             file_load_sender: tx_load,
             loading_paths: HashSet::new(),
             prev_dark_mode: false,
+            undo_manager: UndoManager::new(None),
         };
 
-        if let Some(session) = SessionState::load() {
+        if let Some(mut session) = SessionState::load() {
+            app.undo_manager = UndoManager::new(Some(std::mem::take(&mut session.undo_state)));
             app.tabs = session.tabs;
             app.active_tab_id = session.active_tab_id;
             app.word_wrap = session.word_wrap;
@@ -176,6 +180,21 @@ impl NotosApp {
         self.tabs
             .iter_mut()
             .find(|t| Some(t.id) == self.active_tab_id)
+    }
+    pub fn save_session(&mut self) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let undo_state = self.undo_manager.export_persistent_state();
+        SessionState::save(
+            &self.tabs,
+            self.active_tab_id,
+            self.word_wrap,
+            self.show_line_numbers,
+            self.dark_mode,
+            self.editor_font_size,
+            &self.editor_font_family,
+            &self.custom_fonts,
+            &self.recent_files,
+            undo_state,
+        )
     }
 }
 
