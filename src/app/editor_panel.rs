@@ -291,13 +291,21 @@ impl NotosApp {
                         }
 
                         // Update hover index based on mouse position
+                        // Convert ccursor char index → byte offset so plugins
+                        // and the layouter work with consistent byte offsets.
                         let mut hovered_idx = None;
                         if let Some(hover_pos) = output.response.hover_pos() {
                                 let text_pos =
                                     output.response.rect.min + egui::vec2(margin, margin);
                                 let relative_pos = hover_pos - text_pos;
                                 let cursor = output.galley.cursor_from_pos(relative_pos);
-                                hovered_idx = Some(cursor.ccursor.index);
+                                let char_idx = cursor.ccursor.index;
+                                let byte_offset = tab.content
+                                    .char_indices()
+                                    .nth(char_idx)
+                                    .map(|(i, _)| i)
+                                    .unwrap_or(tab.content.len());
+                                hovered_idx = Some(byte_offset);
                         }
 
                         hovered_idx_out = hovered_idx;
