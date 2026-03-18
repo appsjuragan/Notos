@@ -88,7 +88,7 @@ impl NotosApp {
                                 let mut ul_format = base_format.clone();
                                 ul_format.underline = egui::Stroke::new(
                                     1.0,
-                                    ui.visuals().widgets.noninteractive.text_color(),
+                                    egui::Color32::from_rgb(80, 150, 255),
                                 );
                                 layout_job.append(&string[start..end], 0.0, ul_format);
                                 layout_job.append(&string[end..], 0.0, base_format.clone());

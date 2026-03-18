@@ -10,6 +10,40 @@ impl UrlDetectorPlugin {
         Self { enabled: true }
     }
 
+    /// Check whether a string looks like a domain-based URL (no protocol required).
+    /// Matches patterns like `www.example.com`, `github.com/repo`, `sub.domain.co.uk/path`.
+    fn looks_like_url(s: &str) -> bool {
+        // Must have a protocol or at least one dot for a domain
+        if s.starts_with("http://") || s.starts_with("https://") {
+            return true;
+        }
+
+        // Find the host part (everything before the first '/')
+        let host = s.split('/').next().unwrap_or(s);
+
+        // Must contain at least one dot
+        if !host.contains('.') {
+            return false;
+        }
+
+        // The TLD (last segment after last dot) must be 2-13 alphabetic chars
+        if let Some(tld) = host.rsplit('.').next() {
+            if tld.len() >= 2 && tld.len() <= 13 && tld.chars().all(|c| c.is_ascii_alphabetic()) {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Ensure the URL has a protocol prefix for opening in a browser.
+    fn ensure_protocol(url: &str) -> String {
+        if url.starts_with("http://") || url.starts_with("https://") {
+            url.to_string()
+        } else {
+            format!("https://{}", url)
+        }
+    }
+
     fn find_url_range_at_index(content: &str, index: usize) -> Option<(usize, usize, String)> {
         if content.is_empty() || index > content.len() {
             return None;
@@ -30,6 +64,9 @@ impl UrlDetectorPlugin {
                 || c == '&'
                 || c == '#'
                 || c == '%'
+                || c == '@'
+                || c == '+'
+                || c == '~'
         };
 
         // Find start of potential URL
@@ -61,8 +98,15 @@ impl UrlDetectorPlugin {
 
         if start < end {
             let extracted = &content[start..end];
-            if extracted.starts_with("http://") || extracted.starts_with("https://") {
-                return Some((start, end, extracted.to_string()));
+            // Strip trailing dots/punctuation that are unlikely part of the URL
+            let trimmed = extracted.trim_end_matches('.');
+            if trimmed.is_empty() {
+                return None;
+            }
+            let trimmed_end = start + trimmed.len();
+
+            if Self::looks_like_url(trimmed) {
+                return Some((start, trimmed_end, trimmed.to_string()));
             }
         }
         None
@@ -107,7 +151,7 @@ impl NotosPlugin for UrlDetectorPlugin {
 
             if let Some(idx) = target_idx {
                 if let Some((_, _, url)) = Self::find_url_range_at_index(ed.content, idx) {
-                    let url_str = url.clone();
+                    let url_str = Self::ensure_protocol(&url);
                     std::thread::spawn(move || {
                         #[cfg(target_os = "windows")]
                         let result = {
